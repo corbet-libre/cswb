@@ -1,7 +1,7 @@
 name: ci
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.repository }}
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
@@ -130,7 +130,8 @@ jobs:
 'on':
   push:
     branches:
-    - '**'
+    - main
+    - candidate/**
   pull_request: null
   workflow_dispatch: null
 env:
