@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         ref: ${{ github.event.pull_request.head.sha || github.sha }}
         persist-credentials: false
@@ -26,7 +26,7 @@ jobs:
         date -u +%FT%TZ >> resolver.txt
 
         sha256sum Cargo.lock >> resolver.txt'
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       with:
         name: resolved-lock
         path: 'Cargo.lock
@@ -37,11 +37,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         ref: ${{ github.event.pull_request.head.sha || github.sha }}
         persist-credentials: false
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@v8
       with:
         name: resolved-lock
     - name: Start disposable volatile Valkey
@@ -61,7 +61,7 @@ jobs:
 
         git diff --exit-code -- ''*.rs'' > format.patch'
       continue-on-error: false
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: format
@@ -74,11 +74,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         ref: ${{ github.event.pull_request.head.sha || github.sha }}
         persist-credentials: false
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@v8
       with:
         name: resolved-lock
     - run: python3 .github/check-first-party.py
@@ -95,11 +95,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         ref: ${{ github.event.pull_request.head.sha || github.sha }}
         persist-credentials: false
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@v8
       with:
         name: resolved-lock
     - name: Start disposable volatile Valkey
@@ -129,7 +129,7 @@ jobs:
       run: cargo llvm-cov report --locked --branch --ignore-filename-regex '/tests/' --text > coverage.txt
     - name: Require complete line and branch coverage
       run: python3 .github/check-coverage.py coverage.lcov coverage.json coverage.txt
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       if: always()
       with:
         name: coverage
