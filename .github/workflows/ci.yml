@@ -43,14 +43,15 @@ jobs:
       with:
         name: resolved-lock
     - name: Start disposable volatile Valkey
-      run: "docker run --detach --name valkey --publish 6379:6379 valkey/valkey:8\
-        \ valkey-server --save \"\" --appendonly no --maxmemory 64mb --maxmemory-policy\
-        \ noeviction\nfor attempt in $(seq 1 50); do\n  if docker exec valkey valkey-cli\
-        \ ping; then exit 0; fi\n  sleep 0.1\ndone\nexit 1"
+      run: "docker run --detach --name valkey --publish 6379:6379 valkey/valkey:8 valkey-server --save\
+        \ \"\" --appendonly no --maxmemory 64mb --maxmemory-policy noeviction\nfor attempt in $(seq 1\
+        \ 50); do\n  if docker exec valkey valkey-cli ping; then exit 0; fi\n  sleep 0.1\ndone\nexit 1"
     - uses: dtolnay/rust-toolchain@stable
       with:
         components: rustfmt, clippy
     - uses: Swatinem/rust-cache@v2
+      with:
+        cache-on-failure: true
     - run: rustc --version
     - run: rustc --version
     - name: Check formatting and retain a repair patch
@@ -100,16 +101,16 @@ jobs:
       with:
         name: resolved-lock
     - name: Start disposable volatile Valkey
-      run: "docker run --detach --name valkey --publish 6379:6379 valkey/valkey:8\
-        \ valkey-server --save \"\" --appendonly no --maxmemory 64mb --maxmemory-policy\
-        \ noeviction\nfor attempt in $(seq 1 50); do\n  if docker exec valkey valkey-cli\
-        \ ping; then exit 0; fi\n  sleep 0.1\ndone\nexit 1"
+      run: "docker run --detach --name valkey --publish 6379:6379 valkey/valkey:8 valkey-server --save\
+        \ \"\" --appendonly no --maxmemory 64mb --maxmemory-policy noeviction\nfor attempt in $(seq 1\
+        \ 50); do\n  if docker exec valkey valkey-cli ping; then exit 0; fi\n  sleep 0.1\ndone\nexit 1"
     - uses: dtolnay/rust-toolchain@nightly
       with:
         components: llvm-tools-preview
     - uses: Swatinem/rust-cache@v2
       with:
         prefix-key: coverage
+        cache-on-failure: true
     - uses: taiki-e/install-action@v2
       with:
         tool: cargo-llvm-cov
@@ -117,14 +118,15 @@ jobs:
 
         cargo llvm-cov --version'
     - name: Measure real native round trips and failure paths
-      run: cargo llvm-cov --locked --workspace --all-features --branch --no-cfg-coverage
-        --no-cfg-coverage-nightly --ignore-filename-regex "/tests/" --json --output-path
-        coverage.json
+      run: cargo llvm-cov --locked --workspace --all-features --branch --no-cfg-coverage --no-cfg-coverage-nightly
+        --ignore-filename-regex "/tests/" --json --output-path coverage.json
     - name: Export exact line and branch locations
-      run: cargo llvm-cov report --locked --branch --ignore-filename-regex '/tests/'
-        --lcov --output-path coverage.lcov
+      run: cargo llvm-cov report --locked --branch --ignore-filename-regex '/tests/' --lcov --output-path
+        coverage.lcov
+    - name: Export companion source line inventory
+      run: cargo llvm-cov report --locked --branch --ignore-filename-regex '/tests/' --text > coverage.txt
     - name: Require complete line and branch coverage
-      run: python3 .github/check-coverage.py coverage.json
+      run: python3 .github/check-coverage.py coverage.lcov coverage.json coverage.txt
     - uses: actions/upload-artifact@v4
       if: always()
       with:
@@ -135,7 +137,9 @@ jobs:
 
           Cargo.lock
 
-          resolver.txt'
+          resolver.txt
+
+          coverage.txt'
         retention-days: 7
 'on':
   push:

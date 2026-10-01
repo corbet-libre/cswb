@@ -220,7 +220,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
             .store
             .get(&format!("swb_{}", admission.binding.member))
             .await?;
-        let generation = self.token()?.0.iter().map(|b| format!("{b:02x}")).collect();
+        let generation = data_encoding::HEXLOWER.encode(&self.token()?.0);
         let session = Session {
             member: admission.binding.member.clone(),
             generation,
@@ -361,7 +361,9 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
 }
 
 #[cfg(test)]
+#[path = "../tests/internal/transitions.rs"]
 mod tests;
 
 #[cfg(test)]
+#[path = "../tests/internal/backends.rs"]
 mod backend_tests;
