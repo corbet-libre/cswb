@@ -1,0 +1,15 @@
+# Switchboard contract
+
+Own authoritative bounded volatile attendance under Gather. One community pseudonym has one current device generation. New attendance atomically replaces the former generation. Complete publication bytes and ciphertext are replaced together; Lookup may index only committed entries.
+
+The service supplies one scoped volatile Store, clock, CSPRNG-backed Tokens and explicit resource limits. The store contract lives in cmmr and is wired through cvtl by the door. Every write has an exclusive deadline bounded by the liveness lease and admission authority. Heartbeats cannot extend the original authority. Reads check current binding, schema, epoch, device and deadline. Stale generations cannot read, change or delete replacements. Departure deletes the generation including its ciphertext and indexes. CAS conflicts require renewed verification; uncertain commits must be reconciled, never blindly retried.
+
+## Verification boundaries
+
+Production admission is unavailable. Admission and Current have no public constructors. DeviceVerifier and RecordVerifier have typed, uninhabited success capabilities pending their concrete owner APIs; Unavailable always refuses. No raw key, parsed credential, cached presentation, caller boolean or bearer handle supplies authority. Current Guard integration and the Profile publication verifier must be wired alongside those owners before constructing admission. Credential-gated challenges and per-request device possession are still required, not implemented by this storage core.
+
+## Tests and remaining acceptance
+
+Native tests exercise the actual state transitions and Memory storage at the internal verified-input precondition: replacement, stale disconnects, CAS contention, delayed writes, expiry, clock regression, capacity, malformed state and immediate epoch/schema invalidation. They do not test or establish a trust/device/record round trip. Coverage excludes test sources only; no production exclusion is configured.
+
+Open acceptance: real current trust/credential/publication/record/device integration; bounded one-use challenges; request possession and replay protection; identical suite via Valkey; current reciprocal Lookup reads; lost-write reconciliation and full concurrent worker scheduling. No admission, service or security acceptance is claimed from core coverage.
