@@ -12,7 +12,13 @@ Production admission is unavailable. Admission and Current have no public constr
 
 Native tests exercise the actual state transitions and Memory storage at the internal verified-input precondition: replacement, stale disconnects, CAS contention, delayed writes, expiry, clock regression, capacity, malformed state and immediate epoch/schema invalidation. They do not test or establish a trust/device/record round trip. Coverage excludes test sources only; no production exclusion is configured.
 
-Open acceptance: real current trust/credential/publication/record/device integration; bounded one-use challenges; request possession and replay protection; current reciprocal Lookup reads; lost-write reconciliation and full concurrent worker scheduling. A shared presence vector now targets real Memory and disposable Valkey: concurrent revision replacement, stale disconnects, exclusive expiry, capacity and cleanup. A dropped reply after an actual Valkey script verifies unavailable fencing and explicit reopen/current-revision reconciliation; CI validation is required for this extension. No admission, service or security acceptance is claimed from core coverage.
+Open acceptance: real current trust/credential/publication/record/device integration; bounded one-use challenges; request possession and replay protection; current reciprocal Lookup reads; lost-write reconciliation and full concurrent worker scheduling. A shared presence vector now targets real Memory and disposable Valkey: concurrent revision replacement, stale disconnects, exclusive expiry, capacity and cleanup. A dropped reply after an actual Valkey script verifies unavailable fencing and explicit reopen/current-revision reconciliation; the exact protected-main suite now validates this extension. No admission, service or security acceptance is claimed from core coverage.
 
 Opaque generation names use maintained data-encoding hexadecimal encoding;
 Switchboard does not implement cryptographic or encoding primitives.
+
+G1 credential/Guard checks belong to `cgrd::check_published`, referenced through
+Charter and Assurance. Envoy (`cnvy`) fetches/follows feeds; it does not verify
+authority. Concrete G2 public-record and G3 device capabilities must be composed
+with those current owner checks before any admission succeeds. No second verifier
+or optional check is introduced here.

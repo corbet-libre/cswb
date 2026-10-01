@@ -13,6 +13,8 @@ jobs:
       with:
         ref: ${{ github.event.pull_request.head.sha || github.sha }}
         persist-credentials: false
+    - name: Validate the committed dependency graph
+      run: python3 .github/check-first-party.py
     - uses: dtolnay/rust-toolchain@stable
     - name: Resolve one fresh dependency snapshot
       run: 'cargo update
