@@ -1,7 +1,15 @@
 //! Bounded attendance transitions over the shared volatile storage port.
-//! Admission capabilities have no public constructors until their verifiers
-//! are integrated. Storage transition tests do not establish admission.
+//! Profile and Charter own current person/profile/device verification; this
+//! library binds their result to one-use challenges and signed current requests.
 #![forbid(unsafe_code)]
+
+mod authority;
+mod presence;
+pub use authority::{
+    Challenge, EntryProof, Possession, RequestProof, Verification, challenge_message,
+    request_message,
+};
+pub use presence::{CandidatePage, Scan, VerifiedPresence};
 
 use cmmr::{Clock, Deadline, Record, Revision, Store, Write};
 use serde::{Deserialize, Serialize};
@@ -24,6 +32,9 @@ impl From<cmmr::Error> for Error {
     }
 }
 
+/// The Profile owner bounds its complete serialized publication.
+pub const MAX_PUBLICATION_BYTES: usize = cpfl::MAX_PROFILE_BYTES;
+
 /// Exact opaque device publication. Its verifier must bind all these bytes,
 /// public guard projection, reciprocal rules, ciphertext and reachability.
 /// This type is input, never evidence of successful verification.
@@ -34,10 +45,22 @@ pub struct Publication {
     pub ciphertext: Vec<u8>,
 }
 
+impl Publication {
+    /// Decode the owner format without treating it as verified authority.
+    pub fn from_signed(signed: Vec<u8>) -> Result<Self, Error> {
+        let wire = cpfl::Publication::from_bytes(&signed).map_err(|_| Error::Invalid)?;
+        Ok(Self {
+            signed,
+            ciphertext: wire.envelope,
+        })
+    }
+}
+
 /// Expected authority context for all owner-supplied verification ports.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Binding {
+    pub origin: String,
     pub community: String,
     pub member: String,
     pub device: [u8; 32],
@@ -45,50 +68,14 @@ pub struct Binding {
     pub schema: u32,
 }
 
-/// There is deliberately no constructor from raw keys, JSON or a boolean.
-/// The concrete device attestation verifier belongs to the identity owner.
-pub enum VerifiedDevice {}
-/// The concrete local public-record verifier belongs to accounting.
-pub enum VerifiedRecord {}
-
-pub trait DeviceVerifier {
-    fn verify(
-        &self,
-        binding: &Binding,
-        challenge: &[u8],
-        proof: &[u8],
-    ) -> Result<VerifiedDevice, Error>;
-}
-pub trait RecordVerifier {
-    fn verify(
-        &self,
-        binding: &Binding,
-        publication: &Publication,
-        proof: &[u8],
-    ) -> Result<VerifiedRecord, Error>;
-}
-
-/// Explicit refusal ports until the concrete owner APIs exist. Neither can
-/// mint authority; an unavailable proof never becomes optional.
-pub struct Unavailable;
-impl DeviceVerifier for Unavailable {
-    fn verify(&self, _: &Binding, _: &[u8], _: &[u8]) -> Result<VerifiedDevice, Error> {
-        Err(Error::DeviceUnavailable)
-    }
-}
-impl RecordVerifier for Unavailable {
-    fn verify(&self, _: &Binding, _: &Publication, _: &[u8]) -> Result<VerifiedRecord, Error> {
-        Err(Error::RecordUnavailable)
-    }
-}
-
 /// A whole, validated publication and exclusive authority deadline. No public
-/// constructor exists: production admission is blocked on current Guard,
-/// device attestation and local public-record verification.
+/// unchecked constructor exists. This candidate validates person/profile/device
+/// authority; mandatory G2 frontier currentness integration is still pending.
 pub struct Admission {
     binding: Binding,
     publication: Publication,
     authority_until: u64,
+    lease_ms: u64,
 }
 
 /// Current verified scope and authority, supplied afresh for every operation.
@@ -96,6 +83,19 @@ pub struct Admission {
 pub struct Current {
     binding: Binding,
     authority_until: u64,
+    lease_ms: u64,
+}
+
+impl Current {
+    /// Original scope after fresh current-device request verification. Reading
+    /// this value neither constructs a capability nor extends its authority.
+    pub fn binding(&self) -> &Binding {
+        &self.binding
+    }
+    /// Exclusive Unix-millisecond authority bound; the live row may expire sooner.
+    pub fn authority_until(&self) -> u64 {
+        self.authority_until
+    }
 }
 
 /// All generated IDs must be independently random and unique. The service
@@ -106,6 +106,7 @@ pub trait Tokens: Send + Sync {
 
 #[derive(Clone, Copy)]
 pub struct Limits {
+    /// Deployment storage ceiling, never a replacement for signed settings.
     pub lease_ms: u64,
     pub publication_bytes: usize,
     pub ciphertext_bytes: usize,
@@ -113,7 +114,8 @@ pub struct Limits {
 
 /// Redacted possession handle. The door must verify the device on each request;
 /// knowing a handle alone does not create a Current capability.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Session {
     member: String,
     generation: String,
@@ -170,6 +172,10 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
     }
 
     fn binding(&self, binding: &Binding) -> Result<(), Error> {
+        let origin = url::Url::parse(&binding.origin).map_err(|_| Error::Invalid)?;
+        if origin.scheme() != "https" || origin.origin().ascii_serialization() != binding.origin {
+            return Err(Error::Invalid);
+        }
         if binding.community != self.community
             || binding.epoch == 0
             || binding.schema == 0
@@ -191,14 +197,15 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         Ok(())
     }
 
-    fn deadline(&self, authority_until: u64) -> Result<Deadline, Error> {
+    fn deadline(&self, authority_until: u64, lease_ms: u64) -> Result<Deadline, Error> {
         let now = self.clock.now()?;
         if now >= authority_until {
             return Err(Error::Expired);
         }
-        let end = now
-            .checked_add(self.limits.lease_ms)
-            .ok_or(Error::Invalid)?;
+        if lease_ms == 0 || lease_ms > self.limits.lease_ms {
+            return Err(Error::Invalid);
+        }
+        let end = now.checked_add(lease_ms).ok_or(Error::Invalid)?;
         Ok(Deadline::new(end.min(authority_until))?)
     }
 
@@ -215,12 +222,18 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
     pub async fn enter(&self, admission: Admission) -> Result<(Session, Live), Error> {
         self.binding(&admission.binding)?;
         self.publication(&admission.publication)?;
-        let deadline = self.deadline(admission.authority_until)?;
+        let deadline = self.deadline(admission.authority_until, admission.lease_ms)?;
         let previous = self
             .store
             .get(&format!("swb_{}", admission.binding.member))
             .await?;
         let generation = data_encoding::HEXLOWER.encode(&self.token()?.0);
+        if previous
+            .as_ref()
+            .is_some_and(|record| record.generation == generation)
+        {
+            return Err(Error::Invalid);
+        }
         let session = Session {
             member: admission.binding.member.clone(),
             generation,
@@ -232,8 +245,16 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
             publication: admission.publication,
         };
         let live = self
-            .write(&session, entry, previous.map(|r| r.revision), deadline)
+            .write(
+                &session,
+                entry,
+                previous.as_ref().map(|r| r.revision),
+                deadline,
+            )
             .await?;
+        if let Some(previous) = previous {
+            self.store.delete_generation(&previous.generation).await?;
+        }
         Ok((session, live))
     }
 
@@ -317,7 +338,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
             return Err(Error::Stale);
         }
         entry.authority_until = entry.authority_until.min(current.authority_until);
-        let deadline = self.deadline(entry.authority_until)?;
+        let deadline = self.deadline(entry.authority_until, current.lease_ms)?;
         self.write(session, entry, Some(expected), deadline).await
     }
 
@@ -335,7 +356,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         }
         self.publication(&admission.publication)?;
         let authority_until = admission.authority_until.min(current.authority_until);
-        let deadline = self.deadline(authority_until)?;
+        let deadline = self.deadline(authority_until, admission.lease_ms)?;
         self.write(
             session,
             Entry {

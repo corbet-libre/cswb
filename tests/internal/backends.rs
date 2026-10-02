@@ -38,6 +38,7 @@ fn limits() -> cmmr::Limits {
 }
 fn binding() -> Binding {
     Binding {
+        origin: "https://forum.example".into(),
         community: "parity".into(),
         member: "member".into(),
         device: [7; 32],
