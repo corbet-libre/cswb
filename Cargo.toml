@@ -4,16 +4,28 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 description = "Switchboard for the volatile forum"
-repository = "https://github.com/corbet-foss/cswb"
+repository = "https://git.corbet.ch/corbet-foss/cswb.git"
 license = "LGPL-3.0-only WITH LGPL-3.0-linking-exception"
 
 [dependencies]
-cmmr = { git = "https://github.com/corbet-foss/cmmr", branch = "main" }
+cmmr = { git = "https://git.corbet.ch/corbet-foss/cmmr.git", branch = "v01" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 data-encoding = "2"
+cpfl = { git = "https://git.corbet.ch/corbet-foss/cpfl.git", branch = "v01" }
+cchr = { git = "https://git.corbet.ch/corbet-foss/cchr.git", branch = "v01" }
+crbk = { git = "https://git.corbet.ch/corbet-foss/crbk.git", branch = "v01", default-features = false }
+cshm = { git = "https://git.corbet.ch/corbet-foss/cshm.git", branch = "v01" }
+ed25519-dalek = { version = "3", default-features = false, features = ["fast"] }
+sha2 = "0.11"
+url = "2"
 
 [dev-dependencies]
+cnvl = { git = "https://git.corbet.ch/corbet-foss/cnvl.git", branch = "v01" }
+cgrd = { git = "https://git.corbet.ch/corbet-foss/cgrd.git", branch = "v01", default-features = false }
+csgn = { git = "https://git.corbet.ch/corbet-foss/csgn.git", branch = "v01", default-features = false, features = ["volatile-signer"] }
+ckmg = { git = "https://git.corbet.ch/corbet-foss/ckmg.git", branch = "v01" }
+cwst = { git = "https://git.corbet.ch/corbet-foss/cwst.git", branch = "v01" }
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
-cvlk = { git = "https://github.com/corbet-foss/cvlk", branch = "main" }
+cvlk = { git = "https://git.corbet.ch/corbet-foss/cvlk.git", branch = "v01" }
 redis = { version = "1", default-features = false, features = ["tokio-comp", "script"] }

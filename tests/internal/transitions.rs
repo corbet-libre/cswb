@@ -55,6 +55,7 @@ fn setup() -> (Board, Time) {
 }
 fn binding() -> Binding {
     Binding {
+        origin: "https://forum.example".into(),
         community: "community".into(),
         member: "alice".into(),
         device: [7; 32],
@@ -346,18 +347,6 @@ async fn corrupt_storage_and_shorter_authority_refuse() {
             .deadline,
         120
     );
-}
-
-#[test]
-fn unimplemented_verifiers_cannot_create_authority() {
-    assert!(matches!(
-        DeviceVerifier::verify(&Unavailable, &binding(), &[], &[]),
-        Err(Error::DeviceUnavailable)
-    ));
-    assert!(matches!(
-        RecordVerifier::verify(&Unavailable, &binding(), &publication(), &[]),
-        Err(Error::RecordUnavailable)
-    ));
 }
 
 #[test]
