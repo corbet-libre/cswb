@@ -220,6 +220,25 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
     /// New verified device attendance replaces the previous generation by CAS.
     /// A racing replacement must retry a fresh verification and new generation.
     pub async fn enter(&self, admission: Admission) -> Result<(Session, Live), Error> {
+        let (session, entry, previous, deadline) = self.prepare_enter(admission).await?;
+        let live = self
+            .write(
+                &session,
+                entry,
+                previous.as_ref().map(|r| r.revision),
+                deadline,
+            )
+            .await?;
+        if let Some(previous) = previous {
+            self.store.delete_generation(&previous.generation).await?;
+        }
+        Ok((session, live))
+    }
+
+    async fn prepare_enter(
+        &self,
+        admission: Admission,
+    ) -> Result<(Session, Entry, Option<Record>, Deadline), Error> {
         self.binding(&admission.binding)?;
         self.publication(&admission.publication)?;
         let deadline = self.deadline(admission.authority_until, admission.lease_ms)?;
@@ -244,18 +263,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
             authority_until: admission.authority_until,
             publication: admission.publication,
         };
-        let live = self
-            .write(
-                &session,
-                entry,
-                previous.as_ref().map(|r| r.revision),
-                deadline,
-            )
-            .await?;
-        if let Some(previous) = previous {
-            self.store.delete_generation(&previous.generation).await?;
-        }
-        Ok((session, live))
+        Ok((session, entry, previous, deadline))
     }
 
     async fn write(
@@ -265,26 +273,37 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         expected: Option<Revision>,
         deadline: Deadline,
     ) -> Result<Live, Error> {
+        let (write, live) = self.prepare_write(session, entry, expected, deadline)?;
+        self.store.compare_exchange(&[write]).await?;
+        Ok(live)
+    }
+
+    fn prepare_write(
+        &self,
+        session: &Session,
+        entry: Entry,
+        expected: Option<Revision>,
+        deadline: Deadline,
+    ) -> Result<(Write, Live), Error> {
         let revision = self.token()?;
         let value = serde_json::to_vec(&entry).map_err(|_| Error::Invalid)?;
-        self.store
-            .compare_exchange(&[Write {
-                expected,
-                record: Record {
-                    key: format!("swb_{}", session.member),
-                    generation: session.generation.clone(),
-                    revision,
-                    deadline,
-                    value,
-                    indexes: vec!["swb_present".into()],
-                },
-            }])
-            .await?;
-        Ok(Live {
+        let write = Write {
+            expected,
+            record: Record {
+                key: format!("swb_{}", session.member),
+                generation: session.generation.clone(),
+                revision,
+                deadline,
+                value,
+                indexes: vec!["swb_present".into()],
+            },
+        };
+        let live = Live {
             revision,
             deadline: deadline.unix_ms(),
             publication: entry.publication,
-        })
+        };
+        Ok((write, live))
     }
 
     async fn load(&self, session: &Session, current: &Current) -> Result<(Record, Entry), Error> {

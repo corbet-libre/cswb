@@ -79,8 +79,8 @@ async fn enter<S: Store, C: Clock>(
             &publication.signed,
         ))
         .to_bytes();
-    let admission = board
-        .admit(
+    let entered = board
+        .admit_enter(
             EntryProof {
                 origin: ORIGIN,
                 challenge: &challenge,
@@ -105,9 +105,9 @@ async fn enter<S: Store, C: Clock>(
                 &clean
             )
             .await,
-        Err(Error::Absent)
+        Err(Error::Stale)
     ));
-    board.enter(admission).await.unwrap()
+    entered
 }
 async fn round_trip<S: Store, C: Clock>(board: Switchboard<S, C, RandomTokens>, now: u64) {
     let mut fixture = Fixture::new("alice", 1, now).await;
@@ -661,3 +661,6 @@ async fn nonce_cannot_replay_after_heartbeat_extends_its_original_lease() {
             .is_empty()
     );
 }
+
+#[path = "admission/atomic.rs"]
+mod atomic;

@@ -52,6 +52,9 @@ struct Pending {
     publication: [u8; 32],
 }
 
+// One-use storage state only. It retains no member, request or authority bytes.
+const CONSUMED: &[u8] = &[0];
+
 /// Exact domain framing for a device-owned signing capability. The caller uses
 /// its independently configured forum origin, never an origin from a response.
 pub fn challenge_message(
@@ -226,6 +229,20 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         verification: &Verification<'_>,
         contact: &impl Fn(&str) -> cshm::ContactCheck,
     ) -> Result<Admission, Error> {
+        let (record, admission) = self.verified_pending(proof, verification, contact).await?;
+        // Original lower-owner partial operation; Gather uses admit_enter.
+        self.store
+            .compare_exchange(&[self.consumed(record)?])
+            .await?;
+        Ok(admission)
+    }
+
+    async fn verified_pending(
+        &self,
+        proof: EntryProof<'_>,
+        verification: &Verification<'_>,
+        contact: &impl Fn(&str) -> cshm::ContactCheck,
+    ) -> Result<(Record, Admission), Error> {
         let EntryProof {
             origin,
             challenge,
@@ -234,6 +251,9 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         } = proof;
         let key = challenge_key(challenge);
         let record = self.store.get(&key).await?.ok_or(Error::Absent)?;
+        if record.value == CONSUMED {
+            return Err(Error::Stale);
+        }
         let pending: Pending = serde_json::from_slice(&record.value)
             .map_err(|_| Error::Storage(cmmr::Error::Corrupt))?;
         let (admission, _) =
@@ -250,11 +270,64 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
             &challenge_message(origin, &self.community, challenge, &publication.signed),
             proof,
         )?;
-        // Atomic deletion elects exactly one successful consumer under races.
-        if self.store.delete_generation(&key).await? != 1 {
-            return Err(Error::Stale);
+        Ok((record, admission))
+    }
+
+    /// Atomically consume the pending challenge and publish complete attendance.
+    /// This composes the original person/profile/device checks only; mandatory
+    /// accounting frontier authority is still required by the Forum boundary.
+    pub async fn admit_enter(
+        &self,
+        proof: EntryProof<'_>,
+        verification: &Verification<'_>,
+        contact: &impl Fn(&str) -> cshm::ContactCheck,
+    ) -> Result<(Session, Live), Error> {
+        let started = self.clock.now()?;
+        let (pending, admission) = self.verified_pending(proof, verification, contact).await?;
+        let checked = self.check_completion(started, pending.deadline)?;
+        let (session, entry, previous, deadline) = self.prepare_enter(admission).await?;
+        let deadline = Deadline::new(deadline.unix_ms().min(pending.deadline.unix_ms()))?;
+        let (attendance, live) = self.prepare_write(
+            &session,
+            entry,
+            previous.as_ref().map(|record| record.revision),
+            deadline,
+        )?;
+        let consumed = self.consumed(pending)?;
+        let before_commit = self.check_completion(checked, deadline)?;
+        // Both expected revisions and exclusive deadlines are checked in one
+        // real Store transaction. Conflicts preserve the live pending challenge.
+        self.store.compare_exchange(&[consumed, attendance]).await?;
+        if let Some(previous) = previous {
+            self.store.delete_generation(&previous.generation).await?;
         }
-        Ok(admission)
+        self.check_completion(before_commit, deadline)?;
+        Ok((session, live))
+    }
+
+    fn consumed(&self, pending: Record) -> Result<Write, Error> {
+        Ok(Write {
+            expected: Some(pending.revision),
+            record: Record {
+                key: pending.key,
+                generation: pending.generation,
+                revision: self.token()?,
+                deadline: pending.deadline,
+                value: CONSUMED.to_vec(),
+                indexes: vec![],
+            },
+        })
+    }
+
+    fn check_completion(&self, floor: u64, deadline: Deadline) -> Result<u64, Error> {
+        let now = self.clock.now()?;
+        if now < floor {
+            return Err(Error::Storage(cmmr::Error::ClockRegression));
+        }
+        if now >= deadline.unix_ms() {
+            return Err(Error::Expired);
+        }
+        Ok(now)
     }
 
     /// Reverify stored original publication and current revocations, bind the

@@ -8,10 +8,32 @@ The service supplies one scoped volatile Store, clock, CSPRNG-backed Tokens and 
 
 Admission and Current have no unchecked public constructors. `challenge` verifies
 the whole original publication through Profile and Charter's published Guard
-policy before storing an expiring, opaque challenge. `admit` repeats current
-verification, checks the certified device's signature over the expected HTTPS
-origin, community, challenge, deadline and exact publication digest, then consumes
-the challenge by atomic generation deletion. Only one racing consumer succeeds.
+policy before storing an expiring, opaque challenge. `admit_enter` repeats current
+verification and checks the certified device's signature over the expected HTTPS
+origin, community, challenge, deadline and exact publication digest. One existing
+multi-record CAS replaces the original pending revision with a private consumed
+marker and commits the complete attendance row and its indexes together. Only one
+racing consumer succeeds; an attendance conflict does not spend the challenge.
+
+The marker contains one fixed byte, no member, publication, request, action or
+private key. It retains the original challenge key, separate generation and
+exclusive deadline, with a fresh revision and no indexes. Live-marker replay is
+Stale; after its original expiry the challenge is Absent. The initial attendance
+deadline cannot exceed that challenge. The original lower-owner partial `admit`
+and `enter` remain available; `admit` uses the same conditional marker replacement
+so it cannot delete a composed winner's marker or mint a second Admission.
+Gather routes the single composed operation.
+
+The configured storage batch must allow two writes. A first attendance requires
+one free record slot while retaining the consumed marker; capacity exhaustion
+refuses both changes. Replacement of existing attendance needs no additional
+slot. Marker expiry reclaims its slot without extending retention. Displaced
+generation cleanup follows the commit and cannot delete the new attendance or
+the challenge marker. Clock regression or elapsed authority refuses completion.
+An uncertain network result remains fenced and requires current-revision
+reconciliation; neither absence nor a superseding write proves no commit occurred.
+The existing backends provide atomic visibility, not rollback of an unexpected
+post-write Lua failure. The door must supervise mutations through cancellation.
 
 `authorize` checks the stored original publication against current trust and
 revocations, then verifies the exact origin, action, session, nonce and canonical
@@ -40,6 +62,10 @@ and immediate epoch/schema invalidation. New admission vectors use actual issuer
 and device signatures, Charter, Profile, Guard and encrypted Profile publication
 against both real storage backends. They cover challenge binding/replay, exact
 request/body binding, nonce replay, replacement and current revocation withdrawal.
+The atomic admission source vectors use the same real signing flow and both
+actual stores, including races between partial and composed consumers, failed
+attendance CAS, exclusive commit expiry, capacity and lost replies/cancellation.
+They have not been executed as part of this source change and do not qualify G2.
 Fixture signing custody is test setup, not production pairing authority. Coverage
 excludes test sources only; no production exclusion is configured.
 
