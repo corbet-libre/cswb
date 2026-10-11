@@ -17,6 +17,9 @@ pub struct Verification<'a> {
 pub struct Challenge {
     pub token: [u8; 16],
     pub expires_at_ms: u64,
+    /// Opaque service-selected context, covered by the original device signature.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub payload: Vec<u8>,
 }
 
 /// Each operation proves the same currently authorized device's possession.
@@ -50,6 +53,8 @@ struct Pending {
     binding: Binding,
     origin: String,
     publication: [u8; 32],
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    payload: Vec<u8>,
 }
 
 // One-use storage state only. It retains no member, request or authority bytes.
@@ -177,6 +182,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
                 publication: publication.clone(),
                 authority_until,
                 lease_ms: settings.lease_ms,
+                attachment: None,
             },
             checked,
         ))
@@ -191,18 +197,65 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         verification: &Verification<'_>,
         contact: &impl Fn(&str) -> cshm::ContactCheck,
     ) -> Result<Challenge, Error> {
+        self.issue_challenge(
+            origin,
+            publication,
+            verification,
+            contact,
+            None::<fn(&Binding, u64, [u8; 32]) -> Result<Vec<u8>, Error>>,
+        )
+        .await
+    }
+
+    /// Bind opaque caller-owned context to a real G1 challenge. The builder gets
+    /// the verified scope, exclusive challenge deadline and independent random
+    /// bytes. It returns data only; Switchboard does not verify accounting proof.
+    pub async fn challenge_bound(
+        &self,
+        origin: &str,
+        publication: &Publication,
+        verification: &Verification<'_>,
+        contact: &impl Fn(&str) -> cshm::ContactCheck,
+        build: impl FnOnce(&Binding, u64, [u8; 32]) -> Result<Vec<u8>, Error>,
+    ) -> Result<Challenge, Error> {
+        self.issue_challenge(origin, publication, verification, contact, Some(build))
+            .await
+    }
+
+    async fn issue_challenge(
+        &self,
+        origin: &str,
+        publication: &Publication,
+        verification: &Verification<'_>,
+        contact: &impl Fn(&str) -> cshm::ContactCheck,
+        build: Option<impl FnOnce(&Binding, u64, [u8; 32]) -> Result<Vec<u8>, Error>>,
+    ) -> Result<Challenge, Error> {
         let (admission, _) =
             self.verify_publication(origin, publication, verification, 1, contact)?;
         let deadline = self.deadline(admission.authority_until, admission.lease_ms)?;
+        let payload = if let Some(build) = build {
+            let mut random = [0; 32];
+            random[..16].copy_from_slice(&self.token()?.0);
+            random[16..].copy_from_slice(&self.token()?.0);
+            let payload = build(&admission.binding, deadline.unix_ms(), random)?;
+            if payload.is_empty() || payload.len() > MAX_PUBLICATION_BYTES {
+                return Err(Error::Invalid);
+            }
+            payload
+        } else {
+            Vec::new()
+        };
         let token = self.token()?;
         let challenge = Challenge {
             token: token.0,
             expires_at_ms: deadline.unix_ms(),
+            payload: payload.clone(),
         };
         let pending = Pending {
             binding: admission.binding,
             origin: origin.into(),
             publication: digest(&publication.signed),
+            payload,
         };
         let key = challenge_key(&challenge);
         self.store
@@ -237,7 +290,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         Ok(admission)
     }
 
-    async fn verified_pending(
+    pub(crate) async fn verified_pending(
         &self,
         proof: EntryProof<'_>,
         verification: &Verification<'_>,
@@ -261,6 +314,8 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         if pending.binding != admission.binding
             || pending.origin != origin
             || pending.publication != digest(&publication.signed)
+            || pending.payload != challenge.payload
+            || challenge.payload.len() > MAX_PUBLICATION_BYTES
             || record.deadline.unix_ms() != challenge.expires_at_ms
         {
             return Err(Error::Stale);
@@ -282,30 +337,12 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         verification: &Verification<'_>,
         contact: &impl Fn(&str) -> cshm::ContactCheck,
     ) -> Result<(Session, Live), Error> {
-        let started = self.clock.now()?;
-        let (pending, admission) = self.verified_pending(proof, verification, contact).await?;
-        let checked = self.check_completion(started, pending.deadline)?;
-        let (session, entry, previous, deadline) = self.prepare_enter(admission).await?;
-        let deadline = Deadline::new(deadline.unix_ms().min(pending.deadline.unix_ms()))?;
-        let (attendance, live) = self.prepare_write(
-            &session,
-            entry,
-            previous.as_ref().map(|record| record.revision),
-            deadline,
-        )?;
-        let consumed = self.consumed(pending)?;
-        let before_commit = self.check_completion(checked, deadline)?;
-        // Both expected revisions and exclusive deadlines are checked in one
-        // real Store transaction. Conflicts preserve the live pending challenge.
-        self.store.compare_exchange(&[consumed, attendance]).await?;
-        if let Some(previous) = previous {
-            self.store.delete_generation(&previous.generation).await?;
-        }
-        self.check_completion(before_commit, deadline)?;
-        Ok((session, live))
+        let prepared = self.prepare_entry(proof, verification, contact).await?;
+        let deadline = prepared.deadline();
+        self.commit_entry(prepared, None, deadline).await
     }
 
-    fn consumed(&self, pending: Record) -> Result<Write, Error> {
+    pub(crate) fn consumed(&self, pending: Record) -> Result<Write, Error> {
         Ok(Write {
             expected: Some(pending.revision),
             record: Record {
@@ -319,7 +356,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         })
     }
 
-    fn check_completion(&self, floor: u64, deadline: Deadline) -> Result<u64, Error> {
+    pub(crate) fn check_completion(&self, floor: u64, deadline: Deadline) -> Result<u64, Error> {
         let now = self.clock.now()?;
         if now < floor {
             return Err(Error::Storage(cmmr::Error::ClockRegression));
@@ -370,8 +407,9 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
             };
         let current = Current {
             binding: admission.binding,
-            authority_until: admission.authority_until,
+            authority_until: admission.authority_until.min(entry.authority_until),
             lease_ms: admission.lease_ms,
+            attachment: entry.attachment.clone(),
         };
         self.load(session, &current).await?;
         signature(

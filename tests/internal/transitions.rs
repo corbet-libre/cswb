@@ -74,12 +74,16 @@ fn admission() -> Admission {
         binding: binding(),
         publication: publication(),
         authority_until: 1000,
+        lease_ms: 100,
+        attachment: None,
     }
 }
 fn current() -> Current {
     Current {
         binding: binding(),
         authority_until: 1000,
+        lease_ms: 100,
+        attachment: None,
     }
 }
 

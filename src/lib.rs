@@ -4,11 +4,13 @@
 #![forbid(unsafe_code)]
 
 mod authority;
+mod entry;
 mod presence;
 pub use authority::{
     Challenge, EntryProof, Possession, RequestProof, Verification, challenge_message,
     request_message,
 };
+pub use entry::{Attachment, PreparedEntry};
 pub use presence::{CandidatePage, Scan, VerifiedPresence};
 
 use cmmr::{Clock, Deadline, Record, Revision, Store, Write};
@@ -76,6 +78,7 @@ pub struct Admission {
     publication: Publication,
     authority_until: u64,
     lease_ms: u64,
+    attachment: Option<Attachment>,
 }
 
 /// Current verified scope and authority, supplied afresh for every operation.
@@ -84,9 +87,36 @@ pub struct Current {
     binding: Binding,
     authority_until: u64,
     lease_ms: u64,
+    attachment: Option<Attachment>,
+}
+
+impl Admission {
+    /// Retain opaque higher-owner evidence and shorten this verified G1 candidate.
+    /// This method validates data only and does not confer accounting authority.
+    pub fn with_attachment(mut self, attachment: Attachment) -> Result<Self, Error> {
+        attachment.validate()?;
+        self.authority_until = self.authority_until.min(attachment.record_until());
+        self.attachment = Some(attachment);
+        Ok(self)
+    }
+    /// Opaque retained data; possessing it grants no accounting authority.
+    pub fn attachment(&self) -> Option<&Attachment> {
+        self.attachment.as_ref()
+    }
 }
 
 impl Current {
+    /// Shorten an existing current capability to a higher-owner verification
+    /// deadline. This cannot construct authority or lengthen its original bound.
+    pub fn bounded_until(mut self, until_ms: u64) -> Result<Self, Error> {
+        Deadline::new(until_ms)?;
+        self.authority_until = self.authority_until.min(until_ms);
+        Ok(self)
+    }
+    /// Opaque data retained from the atomic attendance commit.
+    pub fn attachment(&self) -> Option<&Attachment> {
+        self.attachment.as_ref()
+    }
     /// Original scope after fresh current-device request verification. Reading
     /// this value neither constructs a capability nor extends its authority.
     pub fn binding(&self) -> &Binding {
@@ -136,6 +166,8 @@ struct Entry {
     binding: Binding,
     authority_until: u64,
     publication: Publication,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    attachment: Option<Attachment>,
 }
 
 /// Owns no second roster: the supplied scoped volatile store is authoritative.
@@ -262,6 +294,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
             binding: admission.binding,
             authority_until: admission.authority_until,
             publication: admission.publication,
+            attachment: admission.attachment,
         };
         Ok((session, entry, previous, deadline))
     }
@@ -321,6 +354,12 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         }
         let entry: Entry = serde_json::from_slice(&record.value)
             .map_err(|_| Error::Storage(cmmr::Error::Corrupt))?;
+        if let Some(attachment) = &entry.attachment {
+            attachment.validate()?;
+            if entry.authority_until > attachment.record_until() {
+                return Err(Error::Storage(cmmr::Error::Corrupt));
+            }
+        }
         let now = self.clock.now()?;
         if now >= record.deadline.unix_ms()
             || now >= entry.authority_until
@@ -369,12 +408,16 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         expected: Revision,
         admission: Admission,
     ) -> Result<Live, Error> {
-        let (record, _) = self.load(session, current).await?;
+        let (record, entry) = self.load(session, current).await?;
         if record.revision != expected || admission.binding != current.binding {
             return Err(Error::Stale);
         }
         self.publication(&admission.publication)?;
-        let authority_until = admission.authority_until.min(current.authority_until);
+        let attachment = admission.attachment.or(entry.attachment);
+        let mut authority_until = admission.authority_until.min(current.authority_until);
+        if let Some(attachment) = &attachment {
+            authority_until = authority_until.min(attachment.record_until());
+        }
         let deadline = self.deadline(authority_until, admission.lease_ms)?;
         self.write(
             session,
@@ -382,6 +425,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
                 binding: admission.binding,
                 authority_until,
                 publication: admission.publication,
+                attachment,
             },
             Some(expected),
             deadline,

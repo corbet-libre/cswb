@@ -664,3 +664,6 @@ async fn nonce_cannot_replay_after_heartbeat_extends_its_original_lease() {
 
 #[path = "admission/atomic.rs"]
 mod atomic;
+
+#[path = "admission/attachments.rs"]
+mod attachments;

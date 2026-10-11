@@ -9,6 +9,10 @@ pub struct VerifiedPresence {
     profile: cpfl::VerifiedPublication,
 }
 impl VerifiedPresence {
+    /// Opaque retained evidence for the higher owner to reverify.
+    pub fn attachment(&self) -> Option<&Attachment> {
+        self.admission.attachment.as_ref()
+    }
     pub fn profile(&self) -> &cpfl::VerifiedPublication {
         &self.profile
     }
@@ -54,6 +58,12 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
     ) -> Result<VerifiedPresence, Error> {
         let entry: Entry = serde_json::from_slice(&record.value)
             .map_err(|_| Error::Storage(cmmr::Error::Corrupt))?;
+        if let Some(attachment) = &entry.attachment {
+            attachment.validate()?;
+            if entry.authority_until > attachment.record_until() {
+                return Err(Error::Storage(cmmr::Error::Corrupt));
+            }
+        }
         // Different configured origins have separate attendance. Do not let
         // one origin's read erase another origin's otherwise valid presence.
         if entry.binding.origin != origin {
@@ -66,6 +76,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
                     return Err(Error::Storage(cmmr::Error::Corrupt));
                 }
                 admission.authority_until = admission.authority_until.min(entry.authority_until);
+                admission.attachment = entry.attachment;
                 self.deadline(
                     admission.authority_until.min(record.deadline.unix_ms()),
                     admission.lease_ms,

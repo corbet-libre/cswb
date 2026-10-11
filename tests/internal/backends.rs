@@ -50,12 +50,16 @@ fn current() -> Current {
     Current {
         binding: binding(),
         authority_until: WallClock.now().unwrap() + 30_000,
+        lease_ms: 10000,
+        attachment: None,
     }
 }
 fn admission() -> Admission {
     Admission {
         binding: binding(),
         authority_until: WallClock.now().unwrap() + 30_000,
+        lease_ms: 10000,
+        attachment: None,
         publication: Publication {
             signed: vec![1, 2],
             ciphertext: vec![3, 4],
