@@ -22,8 +22,10 @@ exec 9>"$state/lock"
 flock -w "${CI_TIMEOUT:-2700}" 9
 mkdir -p "$state/moon-cache/hashes" "$state/moon-cache/outputs" "$state/moon-home"
 mkdir -p .moon/cache
+ln -sfn "$state/moon-cache/hashes" .moon/cache/hashes
+ln -sfn "$state/moon-cache/outputs" .moon/cache/outputs
 tool_source=github:NixOS/nixpkgs/b7c2ada94fe99c15b0dbcf4d11fd7850b957a436
-tool_paths=$(nix build --no-link --print-out-paths "$tool_source#moon" "$tool_source#proto" "$tool_source#python3" "$tool_source#valkey" "$tool_source#cargo-llvm-cov" "$tool_source#cargo-deny")
+tool_paths=$(nix build --no-link --print-out-paths "$tool_source#moon" "$tool_source#proto" "$tool_source#python3" "$tool_source#valkey")
 for path in $tool_paths; do PATH="$path/bin:$PATH"; done
 export PROTO_HOME="$toolchains/proto" RUSTUP_HOME="$toolchains/rustup"
 export CARGO_HOME="$toolchains/cargo" MOON_HOME="$state/moon-home"
@@ -33,13 +35,15 @@ export PATH="$(dirname "$CCID_BIN"):$CARGO_HOME/bin:$PROTO_HOME/shims:$PROTO_HOM
 export CI_JOBS="${CI_JOBS:-2}" CARGO_BUILD_JOBS="${CI_JOBS:-2}"
 export RUST_TEST_THREADS="${CI_TEST_THREADS:-2}"
 export CARGO_NET_GIT_FETCH_WITH_CLI=true
-# Append to any git config the verified runtime already supplies through the environment.
-git_config_base=${GIT_CONFIG_COUNT:-0}
-export GIT_CONFIG_COUNT=$((git_config_base + 2))
-export "GIT_CONFIG_KEY_$((git_config_base + 0))=url.https://git.corbet.ch/corbet-libs/.insteadOf"
-export "GIT_CONFIG_VALUE_$((git_config_base + 0))=https://github.com/corbet-libs/"
-export "GIT_CONFIG_KEY_$((git_config_base + 1))=url.https://git.corbet.ch/corbet-foss/.insteadOf"
-export "GIT_CONFIG_VALUE_$((git_config_base + 1))=https://github.com/corbet-foss/"
+if [ -n "${GIT_CONFIG_COUNT:-}" ]; then
+  echo 'GIT_CONFIG_COUNT is already set; refusing to overwrite job git config' >&2
+  exit 2
+fi
+export GIT_CONFIG_COUNT=2
+export GIT_CONFIG_KEY_0='url.https://git.corbet.ch/corbet-libs/.insteadOf'
+export GIT_CONFIG_VALUE_0='https://github.com/corbet-libs/'
+export GIT_CONFIG_KEY_1='url.https://git.corbet.ch/corbet-foss/.insteadOf'
+export GIT_CONFIG_VALUE_1='https://github.com/corbet-foss/'
 # Shared-first toolchain lock: production base helper verbatim (no MSRV extra;
 # hosted uses stable only; nightly coverage rides the same gate->main flow).
 TOOLCHAIN_LOCK_FILE="$toolchains/install.lock"
@@ -66,7 +70,6 @@ moon --version
 rustc -vV
 cargo --version
 python3 --version
-cargo-deny --version
 valkey-server --version
 valkey-cli --version
 rustup run nightly rustc -vV
