@@ -538,7 +538,7 @@ checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 [[package]]
 name = "cgrd"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cgrd?branch=main#6ed9485f32e55cd3efc78f36bbad1e4678989688"
+source = "git+https://git.corbet.ch/corbet-foss/cgrd?branch=main#fabf73fadd927817754b1d2c7d4808a0a9e5a5a2"
 dependencies = [
  "bigdecimal",
  "cpns",
