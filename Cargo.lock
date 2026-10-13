@@ -690,7 +690,7 @@ checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 [[package]]
 name = "cnvl"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cnvl.git?branch=main#c59b635ef17d2c2420b03e297acd38893db3a4ee"
+source = "git+https://git.corbet.ch/corbet-foss/cnvl.git?branch=main#c189819ab8b5a2ca0385afa20fc4ab8f4f5f43fe"
 dependencies = [
  "cgrd",
  "chacha20poly1305",
