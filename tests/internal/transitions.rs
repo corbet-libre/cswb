@@ -270,9 +270,9 @@ async fn bounds_and_scope_fail_before_a_write() {
             .is_empty()
     );
     time.0.store(u64::MAX, Ordering::SeqCst);
-    assert!(matches!(board.deadline(u64::MAX), Err(Error::Expired)));
+    assert!(matches!(board.deadline(u64::MAX, 100), Err(Error::Expired)));
     time.0.store(u64::MAX - 1, Ordering::SeqCst);
-    assert!(matches!(board.deadline(u64::MAX), Err(Error::Invalid)));
+    assert!(matches!(board.deadline(u64::MAX, 100), Err(Error::Invalid)));
 }
 
 #[tokio::test]

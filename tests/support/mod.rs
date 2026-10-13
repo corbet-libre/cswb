@@ -24,6 +24,14 @@ impl DeviceSigner for Device {
         Ok(self.0.sign(bytes).to_bytes())
     }
 }
+/// Borrows only the charter, so a test can keep reading the other fixture fields.
+pub fn verify_with(charter: &mut cchr::Charter, now: u64) -> Verification<'_> {
+    Verification {
+        charter: charter.current(now).unwrap(),
+        action: ACTION,
+        maximum_snapshot_age: 300,
+    }
+}
 pub struct Fixture {
     pub charter: cchr::Charter,
     pub publication: Publication,

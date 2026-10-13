@@ -22,7 +22,7 @@ fn signed(fixture: &Fixture, challenge: &Challenge) -> [u8; 64] {
         .to_bytes()
 }
 fn input<'a>(
-    fixture: &'a Fixture,
+    publication: &'a Publication,
     challenge: &'a Challenge,
     signature: &'a [u8; 64],
 ) -> EntryProof<'a> {
@@ -30,19 +30,19 @@ fn input<'a>(
         origin: ORIGIN,
         challenge,
         signature,
-        publication: &fixture.publication,
+        publication,
     }
 }
 async fn bound<S: Store>(
     board: &Switchboard<S, Time, RandomTokens>,
-    fixture: &Fixture,
+    fixture: &mut Fixture,
     now: u64,
 ) -> Challenge {
     board
         .challenge_bound(
             ORIGIN,
             &fixture.publication,
-            &fixture.verification(),
+            &support::verify_with(&mut fixture.charter, fixture.now),
             &clean,
             |binding, deadline, random| {
                 assert_eq!(binding.member, "alice");
@@ -59,13 +59,13 @@ async fn bound<S: Store>(
 async fn retention<S: Store + Clone>(store: S, clock: Time) {
     let now = clock.now().unwrap();
     let board = board(store.clone(), clock.clone());
-    let fixture = Fixture::new("alice", 1, now / 1000).await;
-    let challenge = bound(&board, &fixture, now).await;
+    let mut fixture = Fixture::new("alice", 1, now / 1000).await;
+    let challenge = bound(&board, &mut fixture, now).await;
     let signature = signed(&fixture, &challenge);
     let prepared = board
         .prepare_entry(
-            input(&fixture, &challenge, &signature),
-            &fixture.verification(),
+            input(&fixture.publication, &challenge, &signature),
+            &support::verify_with(&mut fixture.charter, fixture.now),
             &clean,
         )
         .await
@@ -87,8 +87,8 @@ async fn retention<S: Store + Clone>(store: S, clock: Time) {
     assert!(matches!(
         board
             .prepare_entry(
-                input(&fixture, &challenge, &signature),
-                &fixture.verification(),
+                input(&fixture.publication, &challenge, &signature),
+                &support::verify_with(&mut fixture.charter, fixture.now),
                 &clean
             )
             .await,
@@ -104,7 +104,7 @@ async fn retention<S: Store + Clone>(store: S, clock: Time) {
                 body: b"renew",
                 possession: &possession,
             },
-            &fixture.verification(),
+            &support::verify_with(&mut fixture.charter, fixture.now),
             &clean,
         )
         .await
@@ -115,13 +115,13 @@ async fn retention<S: Store + Clone>(store: S, clock: Time) {
         b"opaque-retained-record"
     );
     let presence = board
-        .requester(&session, &current, &fixture.verification(), &clean)
+        .requester(&session, &current, &support::verify_with(&mut fixture.charter, fixture.now), &clean)
         .await
         .unwrap();
     assert_eq!(presence.attachment().unwrap().record_until(), now + 8000);
     assert_eq!(presence.deadline(), live.deadline);
     board
-        .confirm(&[&presence], &fixture.verification(), &clean)
+        .confirm(&[&presence], &support::verify_with(&mut fixture.charter, fixture.now), &clean)
         .await
         .unwrap();
     clock.0.store(now + 500, Ordering::SeqCst);
@@ -137,7 +137,7 @@ async fn retention<S: Store + Clone>(store: S, clock: Time) {
             &session,
             &current,
             &next.publication,
-            &fixture.verification(),
+            &support::verify_with(&mut fixture.charter, fixture.now),
             &clean,
         )
         .await
@@ -161,7 +161,7 @@ async fn retention<S: Store + Clone>(store: S, clock: Time) {
             &session,
             &current,
             &third.publication,
-            &fixture.verification(),
+            &support::verify_with(&mut fixture.charter, fixture.now),
             &clean,
         )
         .await
@@ -182,7 +182,7 @@ async fn retention<S: Store + Clone>(store: S, clock: Time) {
                 body: b"bounded",
                 possession: &possession,
             },
-            &fixture.verification(),
+            &support::verify_with(&mut fixture.charter, fixture.now),
             &clean,
         )
         .await
@@ -219,12 +219,12 @@ async fn tamper_and_completion<S: Store + Clone>(store: S, clock: Time) {
         },
         clock.clone(),
     );
-    let fixture = Fixture::new("alice", 1, now / 1000).await;
+    let mut fixture = Fixture::new("alice", 1, now / 1000).await;
     let legacy = board
         .challenge(
             ORIGIN,
             &fixture.publication,
-            &fixture.verification(),
+            &support::verify_with(&mut fixture.charter, fixture.now),
             &clean,
         )
         .await
@@ -242,7 +242,7 @@ async fn tamper_and_completion<S: Store + Clone>(store: S, clock: Time) {
                 .challenge_bound(
                     ORIGIN,
                     &fixture.publication,
-                    &fixture.verification(),
+                    &support::verify_with(&mut fixture.charter, fixture.now),
                     &clean,
                     |_, _, _| Ok(bytes)
                 )
@@ -253,7 +253,7 @@ async fn tamper_and_completion<S: Store + Clone>(store: S, clock: Time) {
     assert!(Attachment::new(Vec::new(), now + 1000).is_err());
     assert!(Attachment::new(vec![1; MAX_PUBLICATION_BYTES + 1], now + 1000).is_err());
     assert!(Attachment::new(vec![1], 0).is_err());
-    let challenge = bound(&board, &fixture, now).await;
+    let challenge = bound(&board, &mut fixture, now).await;
     let signature = signed(&fixture, &challenge);
     let pending = store.get(&key(&challenge)).await.unwrap().unwrap();
     let mut changed = challenge.clone();
@@ -263,8 +263,8 @@ async fn tamper_and_completion<S: Store + Clone>(store: S, clock: Time) {
         assert!(matches!(
             board
                 .prepare_entry(
-                    input(&fixture, &changed, &signature),
-                    &fixture.verification(),
+                    input(&fixture.publication, &changed, &signature),
+                    &support::verify_with(&mut fixture.charter, fixture.now),
                     &clean
                 )
                 .await,
@@ -274,8 +274,8 @@ async fn tamper_and_completion<S: Store + Clone>(store: S, clock: Time) {
     assert!(store.get(&key(&challenge)).await.unwrap().unwrap() == pending);
     let prepared = board
         .prepare_entry(
-            input(&fixture, &challenge, &signature),
-            &fixture.verification(),
+            input(&fixture.publication, &challenge, &signature),
+            &support::verify_with(&mut fixture.charter, fixture.now),
             &clean,
         )
         .await
@@ -289,8 +289,8 @@ async fn tamper_and_completion<S: Store + Clone>(store: S, clock: Time) {
     assert!(store.get(&key(&challenge)).await.unwrap().unwrap() == pending);
     let prepared = board
         .prepare_entry(
-            input(&fixture, &challenge, &signature),
-            &fixture.verification(),
+            input(&fixture.publication, &challenge, &signature),
+            &support::verify_with(&mut fixture.charter, fixture.now),
             &clean,
         )
         .await
@@ -314,8 +314,8 @@ async fn tamper_and_completion<S: Store + Clone>(store: S, clock: Time) {
     assert!(store.get("swb_alice").await.unwrap().is_none());
     let prepared = board
         .prepare_entry(
-            input(&fixture, &challenge, &signature),
-            &fixture.verification(),
+            input(&fixture.publication, &challenge, &signature),
+            &support::verify_with(&mut fixture.charter, fixture.now),
             &clean,
         )
         .await

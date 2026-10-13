@@ -1,6 +1,5 @@
 //! Real signed owner atomic admission, without a G2 acceptance claim.
 use super::*;
-use ed25519_dalek::Signer as _;
 #[path = "atomic_support.rs"]
 mod atomic_support;
 use atomic_support::*;
