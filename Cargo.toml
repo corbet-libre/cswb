@@ -12,8 +12,8 @@ cmmr = { git = "https://git.corbet.ch/corbet-foss/cmmr.git", branch = "v01" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 data-encoding = "2"
-cpfl = { git = "https://git.corbet.ch/corbet-foss/cpfl.git", branch = "v01" }
-cchr = { git = "https://git.corbet.ch/corbet-foss/cchr.git", branch = "v01" }
+cpfl = { git = "https://git.corbet.ch/corbet-foss/cpfl.git", branch = "main" }
+cchr = { git = "https://git.corbet.ch/corbet-foss/cchr.git", branch = "main" }
 crbk = { git = "https://git.corbet.ch/corbet-foss/crbk", branch = "main", default-features = false }
 cshm = { git = "https://git.corbet.ch/corbet-foss/cshm", branch = "main" }
 ed25519-dalek = { version = "3", default-features = false, features = ["fast"] }
