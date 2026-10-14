@@ -524,6 +524,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "cfbk"
+version = "0.0.0"
+source = "git+https://git.corbet.ch/corbet-foss/cfbk?branch=main#e03ed80f037b02dcedac1657c4fd23615bae3815"
+
+[[package]]
 name = "cfg-if"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -538,13 +543,14 @@ checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 [[package]]
 name = "cgrd"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cgrd?branch=main#fabf73fadd927817754b1d2c7d4808a0a9e5a5a2"
+source = "git+https://git.corbet.ch/corbet-foss/cgrd?branch=main#e639a686dc8356b21d65c653b718dc07abd8e398"
 dependencies = [
  "bigdecimal",
  "cpns",
  "crbk",
  "csgn",
  "cshm",
+ "cvch",
  "ed25519-dalek",
  "geographiclib-rs",
  "precis-profiles",
@@ -774,7 +780,7 @@ dependencies = [
 [[package]]
 name = "cpfl"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cpfl.git?branch=main#9013cf411600ea78f9d89ccc54f4c81942f0a944"
+source = "git+https://git.corbet.ch/corbet-foss/cpfl.git?branch=main#8588f0632d0b4a2ab0422ab5984800bc8a19c528"
 dependencies = [
  "blake3",
  "cgrd",
@@ -1019,6 +1025,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "cvch"
+version = "0.2.1"
+source = "git+https://git.corbet.ch/corbet-foss/cvch?branch=main#a0f153cf194f6513cf6e60eefa087d906616fc8f"
+dependencies = [
+ "cfbk",
+ "csgn",
+ "ed25519-dalek",
+ "getrandom 0.4.3",
+ "hex",
+ "hmac 0.13.0",
+ "hpke",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "thiserror",
+ "zeroize",
+]
+
+[[package]]
 name = "cvlk"
 version = "0.1.0"
 source = "git+https://git.corbet.ch/corbet-foss/cvlk.git?branch=main#98c71633bb4833be40978546eee65afb67445dc9"
@@ -1165,6 +1190,7 @@ version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29fcf32e6c73d1079f83ab4d782de2d81620346a5f38c6237a86a22f8368980a"
 dependencies = [
+ "serdect",
  "signature 3.0.0",
 ]
 
@@ -1176,6 +1202,7 @@ checksum = "6ebaa1a2bf1290ab3bfe5a7b771d050ebffab2711c19a81691c683a5144a25de"
 dependencies = [
  "curve25519-dalek",
  "ed25519",
+ "serde",
  "sha2 0.11.1",
  "signature 3.0.0",
  "subtle",
@@ -3149,6 +3176,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7523beb55eece201a2356bee0bbca0d1ab466c14c07703b2e0ee6d42cb0c2c"
 dependencies = [
  "serde_core",
+]
+
+[[package]]
+name = "serdect"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66cf8fedced2fcf12406bcb34223dffb92eaf34908ede12fed414c82b7f00b3e"
+dependencies = [
+ "base16ct 1.0.0",
+ "serde",
 ]
 
 [[package]]
