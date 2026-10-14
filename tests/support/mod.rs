@@ -153,6 +153,7 @@ impl Fixture {
                 &custody,
                 &PortableCodec,
                 &clean,
+                &|_: &str| None,
             )
             .unwrap()
             .commit_publication(
