@@ -543,7 +543,7 @@ checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 [[package]]
 name = "cgrd"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cgrd?branch=main#e639a686dc8356b21d65c653b718dc07abd8e398"
+source = "git+https://git.corbet.ch/corbet-foss/cgrd?branch=main#203900ab71428b910092fb9b0ecc632ac483cae4"
 dependencies = [
  "bigdecimal",
  "cpns",
@@ -696,7 +696,7 @@ checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 [[package]]
 name = "cnvl"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cnvl.git?branch=main#c189819ab8b5a2ca0385afa20fc4ab8f4f5f43fe"
+source = "git+https://git.corbet.ch/corbet-foss/cnvl.git?branch=main#d784ea308c8fcedd4f574dfd306e3334c6ac8afb"
 dependencies = [
  "cgrd",
  "chacha20poly1305",
@@ -780,7 +780,7 @@ dependencies = [
 [[package]]
 name = "cpfl"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cpfl.git?branch=main#8588f0632d0b4a2ab0422ab5984800bc8a19c528"
+source = "git+https://git.corbet.ch/corbet-foss/cpfl.git?branch=main#8624b917070fdb0b96512dc01c97a69b854179d4"
 dependencies = [
  "blake3",
  "cgrd",
@@ -1027,7 +1027,7 @@ dependencies = [
 [[package]]
 name = "cvch"
 version = "0.2.1"
-source = "git+https://git.corbet.ch/corbet-foss/cvch?branch=main#a0f153cf194f6513cf6e60eefa087d906616fc8f"
+source = "git+https://git.corbet.ch/corbet-foss/cvch?branch=main#781cfff36a78af9539c835041f8f9d42b5ed9492"
 dependencies = [
  "cfbk",
  "csgn",
