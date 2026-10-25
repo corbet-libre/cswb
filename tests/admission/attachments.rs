@@ -115,13 +115,22 @@ async fn retention<S: Store + Clone>(store: S, clock: Time) {
         b"opaque-retained-record"
     );
     let presence = board
-        .requester(&session, &current, &support::verify_with(&mut fixture.charter, fixture.now), &clean)
+        .requester(
+            &session,
+            &current,
+            &support::verify_with(&mut fixture.charter, fixture.now),
+            &clean,
+        )
         .await
         .unwrap();
     assert_eq!(presence.attachment().unwrap().record_until(), now + 8000);
     assert_eq!(presence.deadline(), live.deadline);
     board
-        .confirm(&[&presence], &support::verify_with(&mut fixture.charter, fixture.now), &clean)
+        .confirm(
+            &[&presence],
+            &support::verify_with(&mut fixture.charter, fixture.now),
+            &clean,
+        )
         .await
         .unwrap();
     clock.0.store(now + 500, Ordering::SeqCst);
