@@ -8,7 +8,6 @@ pub struct Verification<'a> {
     pub charter: &'a cchr::VerifiedCharter,
     /// Admission action selected by the service, never by a member request.
     pub action: &'a str,
-    pub maximum_snapshot_age: u64,
 }
 
 /// One bounded challenge; possessing these public bytes grants no authority.
@@ -138,11 +137,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         .map_err(|_| Error::TrustUnavailable)?;
         let policy = verification
             .charter
-            .admission_policy(
-                verification.action,
-                now / 1000,
-                verification.maximum_snapshot_age,
-            )
+            .current_admission_policy(verification.action, now / 1000)
             .map_err(|_| Error::TrustUnavailable)?;
         let wire =
             cpfl::Publication::from_bytes(&publication.signed).map_err(|_| Error::Invalid)?;

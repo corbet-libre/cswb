@@ -29,7 +29,6 @@ pub fn verify_with(charter: &mut cchr::Charter, now: u64) -> Verification<'_> {
     Verification {
         charter: charter.current(now).unwrap(),
         action: ACTION,
-        maximum_snapshot_age: 300,
     }
 }
 pub struct Fixture {
@@ -181,7 +180,6 @@ impl Fixture {
         Verification {
             charter: self.charter.current(self.now).unwrap(),
             action: ACTION,
-            maximum_snapshot_age: 300,
         }
     }
     pub fn settings(&mut self, revision: u64, heartbeat: Value, lease: Value) {
