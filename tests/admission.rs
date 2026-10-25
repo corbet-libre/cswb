@@ -265,7 +265,7 @@ async fn signed_settings_cannot_change_the_forum_lease_constants() {
     let mut fixture = Fixture::new("alice", 1, 1100).await;
     let lease = 1_100_000 + crbk::FORUM_LEASE_MS;
     fixture.settings(2, serde_json::json!(1000), serde_json::json!(5000));
-    let (session, live) = enter(&board, &mut fixture).await;
+    let (session, mut live) = enter(&board, &mut fixture).await;
     assert_eq!(live.deadline, lease);
     for (revision, heartbeat, expiry, sequence) in [
         (3, serde_json::json!(500), serde_json::json!(2000), 1),
@@ -287,11 +287,11 @@ async fn signed_settings_cannot_change_the_forum_lease_constants() {
             )
             .await
             .unwrap();
-        let renewed = board
+        live = board
             .heartbeat(&session, &current, live.revision)
             .await
             .unwrap();
-        assert_eq!(renewed.deadline, lease);
+        assert_eq!(live.deadline, lease);
     }
     assert!(store.get("swb_alice").await.unwrap().is_some());
 }
