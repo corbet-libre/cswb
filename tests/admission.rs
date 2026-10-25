@@ -43,7 +43,7 @@ fn board<S: Store, C: Clock>(store: S, clock: C) -> Switchboard<S, C, RandomToke
         RandomTokens,
         "garden".into(),
         Limits {
-            lease_ms: 10_000,
+            lease_ms: 60_000,
             publication_bytes: cpfl::MAX_PROFILE_BYTES,
             ciphertext_bytes: cpfl::MAX_PROFILE_BYTES,
         },
