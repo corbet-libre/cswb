@@ -248,8 +248,10 @@ async fn current_signed_admission_request_replacement_and_revocation_in_memory()
     round_trip(board(store, clock), 1100).await;
 }
 
+/// The Forum's lease and heartbeat are code constants (`crbk::FORUM_*`): whatever an authenticated
+/// settings snapshot says about them, even a missing value, changes neither the lease nor admission.
 #[tokio::test]
-async fn current_signed_settings_bound_renewals_and_missing_values_withdraw() {
+async fn signed_settings_cannot_change_the_forum_lease_constants() {
     let clock = Time(Arc::new(AtomicU64::new(1_100_000)));
     let store = Arc::new(
         cmmr::Memory::new(
@@ -261,49 +263,37 @@ async fn current_signed_settings_bound_renewals_and_missing_values_withdraw() {
     );
     let board = board(store.clone(), clock);
     let mut fixture = Fixture::new("alice", 1, 1100).await;
+    let lease = 1_100_000 + crbk::FORUM_LEASE_MS;
     fixture.settings(2, serde_json::json!(1000), serde_json::json!(5000));
     let (session, live) = enter(&board, &mut fixture).await;
-    assert_eq!(live.deadline, 1_105_000);
-    fixture.settings(3, serde_json::json!(500), serde_json::json!(2000));
-    let possession = proof(&fixture, &session, "heartbeat", 1, b"renew");
-    let current = board
-        .authorize(
-            RequestProof {
-                origin: ORIGIN,
-                session: &session,
-                action: "heartbeat",
-                body: b"renew",
-                possession: &possession,
-            },
-            &fixture.verification(),
-            &clean,
-        )
-        .await
-        .unwrap();
-    let live = board
-        .heartbeat(&session, &current, live.revision)
-        .await
-        .unwrap();
-    assert_eq!(live.deadline, 1_102_000);
-    fixture.settings(4, serde_json::Value::Null, serde_json::json!(2000));
-    let possession = proof(&fixture, &session, "heartbeat", 2, b"renew");
-    assert!(matches!(
-        board
+    assert_eq!(live.deadline, lease);
+    for (revision, heartbeat, expiry, sequence) in [
+        (3, serde_json::json!(500), serde_json::json!(2000), 1),
+        (4, serde_json::Value::Null, serde_json::json!(2000), 2),
+    ] {
+        fixture.settings(revision, heartbeat, expiry);
+        let possession = proof(&fixture, &session, "heartbeat", sequence, b"renew");
+        let current = board
             .authorize(
                 RequestProof {
                     origin: ORIGIN,
                     session: &session,
                     action: "heartbeat",
                     body: b"renew",
-                    possession: &possession
+                    possession: &possession,
                 },
                 &fixture.verification(),
-                &clean
+                &clean,
             )
-            .await,
-        Err(Error::TrustUnavailable)
-    ));
-    assert!(store.get("swb_alice").await.unwrap().is_none());
+            .await
+            .unwrap();
+        let renewed = board
+            .heartbeat(&session, &current, live.revision)
+            .await
+            .unwrap();
+        assert_eq!(renewed.deadline, lease);
+    }
+    assert!(store.get("swb_alice").await.unwrap().is_some());
 }
 #[derive(Clone, Copy)]
 struct Wall;

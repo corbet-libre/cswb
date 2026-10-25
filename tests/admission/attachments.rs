@@ -47,7 +47,7 @@ async fn bound<S: Store>(
             |binding, deadline, random| {
                 assert_eq!(binding.member, "alice");
                 assert_eq!(binding.device, fixture.device.verifying_key().to_bytes());
-                assert_eq!(deadline, now + 10_000);
+                assert_eq!(deadline, now + crbk::FORUM_LEASE_MS);
                 assert_ne!(&random[..16], &[0; 16]);
                 assert_ne!(&random[16..], &[0; 16]);
                 Ok(serde_json::to_vec(&("opaque-test-context", deadline, random)).unwrap())
