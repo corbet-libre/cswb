@@ -307,6 +307,10 @@ impl Clock for Wall {
 }
 #[tokio::test]
 async fn same_signed_round_trip_uses_actual_valkey() {
+    if std::env::var_os("VALKEY_URL").is_none() {
+        eprintln!("skipped: VALKEY_URL is required (disposable Valkey)");
+        return;
+    }
     let client =
         redis::Client::open(std::env::var("VALKEY_URL").expect("Disposable Valkey is required"))
             .unwrap();

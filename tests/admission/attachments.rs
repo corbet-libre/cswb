@@ -367,12 +367,20 @@ async fn payload_and_pair_deadlines_use_genuine_memory_admission() {
 }
 #[tokio::test]
 async fn opaque_retention_and_shortened_authority_use_actual_valkey() {
+    if std::env::var_os("VALKEY_URL").is_none() {
+        eprintln!("skipped: VALKEY_URL is required (disposable Valkey)");
+        return;
+    }
     let clock = wall_future();
     let store = valkey(network(clock.clone()).await, clock.clone(), 64).await;
     retention(store, clock).await;
 }
 #[tokio::test]
 async fn payload_and_pair_deadlines_use_actual_valkey() {
+    if std::env::var_os("VALKEY_URL").is_none() {
+        eprintln!("skipped: VALKEY_URL is required (disposable Valkey)");
+        return;
+    }
     let clock = wall_future();
     let store = valkey(network(clock.clone()).await, clock.clone(), 64).await;
     tamper_and_completion(store, clock).await;

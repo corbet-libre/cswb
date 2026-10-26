@@ -187,6 +187,10 @@ async fn transitions<S: Store>(store: S) {
 
 #[tokio::test]
 async fn memory_and_valkey_share_presence_vectors() {
+    if std::env::var_os("VALKEY_URL").is_none() {
+        eprintln!("skipped: VALKEY_URL is required (disposable Valkey)");
+        return;
+    }
     transitions(
         cmmr::Memory::new(
             cmmr::Scope::new("parity", "memory").unwrap(),
@@ -232,6 +236,10 @@ impl Network for LostReply {
 }
 #[tokio::test]
 async fn lost_valkey_write_reply_requires_reopen_and_current_revision() {
+    if std::env::var_os("VALKEY_URL").is_none() {
+        eprintln!("skipped: VALKEY_URL is required (disposable Valkey)");
+        return;
+    }
     let network = Arc::new(LostReply {
         real: connect().await,
         lose: AtomicBool::new(false),

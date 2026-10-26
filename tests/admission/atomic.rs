@@ -257,6 +257,10 @@ async fn atomic_signed_memory_races_and_capacity() {
 
 #[tokio::test]
 async fn atomic_signed_valkey_races_and_capacity() {
+    if std::env::var_os("VALKEY_URL").is_none() {
+        eprintln!("skipped: VALKEY_URL is required (disposable Valkey)");
+        return;
+    }
     let clock = wall_future();
     races(
         valkey(network(clock.clone()).await, clock.clone(), 64).await,
@@ -473,6 +477,10 @@ async fn atomic_signed_memory_rechecks_commit_preconditions() {
 }
 #[tokio::test]
 async fn atomic_signed_valkey_rechecks_commit_preconditions() {
+    if std::env::var_os("VALKEY_URL").is_none() {
+        eprintln!("skipped: VALKEY_URL is required (disposable Valkey)");
+        return;
+    }
     let clock = wall_future();
     stale_attendance(
         valkey(network(clock.clone()).await, clock.clone(), 64).await,
@@ -495,6 +503,10 @@ async fn atomic_signed_valkey_rechecks_commit_preconditions() {
 
 #[tokio::test]
 async fn committed_valkey_pair_survives_lost_reply_and_cancellation() {
+    if std::env::var_os("VALKEY_URL").is_none() {
+        eprintln!("skipped: VALKEY_URL is required (disposable Valkey)");
+        return;
+    }
     for fault in [1, 2] {
         let clock = wall_future();
         let network = network(clock.clone()).await;
