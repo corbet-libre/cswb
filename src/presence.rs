@@ -7,6 +7,7 @@ pub struct VerifiedPresence {
     record: Record,
     admission: Admission,
     profile: cpfl::VerifiedPublication,
+    accepting_waves: Option<bool>,
 }
 impl VerifiedPresence {
     /// Opaque retained evidence for the higher owner to reverify.
@@ -34,11 +35,23 @@ impl VerifiedPresence {
     pub fn binding(&self) -> &Binding {
         &self.admission.binding
     }
+    /// This device row's own Wave-budget hint from its signed heartbeat or
+    /// replace body. `None` (never reported) means unknown: visible.
+    pub fn accepting_waves(&self) -> Option<bool> {
+        self.accepting_waves
+    }
     /// The row's opaque storage key (a hash; it names neither member nor
     /// device). Candidate pages are ordered by it.
     pub fn key(&self) -> &str {
         &self.record.key
     }
+}
+
+/// Findability over one member's verified live device rows: hidden only when
+/// every row reports a full Wave budget. No row, or any row that is not full
+/// or never reported, keeps the member findable.
+pub fn findable(rows: &[VerifiedPresence]) -> bool {
+    rows.is_empty() || rows.iter().any(|row| row.accepting_waves != Some(false))
 }
 
 /// The row with the freshest verified profile revision; the first such row in
@@ -92,6 +105,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         if entry.binding.origin != origin {
             return Err(Error::Stale);
         }
+        let accepting_waves = entry.accepting_waves;
         let result = self.verify_publication(origin, &entry.publication, verification, 1, contact);
         match result {
             Ok((mut admission, profile)) if admission.binding == entry.binding => {
@@ -113,6 +127,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
                     record,
                     admission,
                     profile,
+                    accepting_waves,
                 })
             }
             _ => {

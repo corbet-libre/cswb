@@ -11,7 +11,7 @@ pub use authority::{
     request_message,
 };
 pub use entry::{Attachment, PreparedEntry};
-pub use presence::{CandidatePage, Scan, VerifiedPresence, freshest};
+pub use presence::{CandidatePage, Scan, VerifiedPresence, findable, freshest};
 
 use cmmr::{Clock, Deadline, Record, Revision, Store, Write};
 use serde::{Deserialize, Serialize};
@@ -168,6 +168,9 @@ struct Entry {
     publication: Publication,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     attachment: Option<Attachment>,
+    /// The device's signed Wave-budget hint (P8b); absent = unknown = visible.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    accepting_waves: Option<bool>,
 }
 
 /// Storage key for one device's attendance row. A member may hold
@@ -329,6 +332,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
             authority_until: admission.authority_until,
             publication: admission.publication,
             attachment: admission.attachment,
+            accepting_waves: None,
         };
         Ok((session, entry, previous, deadline))
     }
@@ -425,10 +429,23 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         current: &Current,
         expected: Revision,
     ) -> Result<Live, Error> {
+        self.heartbeat_with(session, current, expected, None).await
+    }
+
+    /// Heartbeat carrying the device's signed Wave-budget hint, stored on this
+    /// device's own row (`None` = unknown).
+    pub async fn heartbeat_with(
+        &self,
+        session: &Session,
+        current: &Current,
+        expected: Revision,
+        accepting_waves: Option<bool>,
+    ) -> Result<Live, Error> {
         let (record, mut entry) = self.load(session, current).await?;
         if record.revision != expected {
             return Err(Error::Stale);
         }
+        entry.accepting_waves = accepting_waves;
         entry.authority_until = entry.authority_until.min(current.authority_until);
         let deadline = self.deadline(entry.authority_until, current.lease_ms)?;
         self.write(session, entry, Some(expected), deadline).await
@@ -441,6 +458,19 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         current: &Current,
         expected: Revision,
         admission: Admission,
+    ) -> Result<Live, Error> {
+        self.replace_with(session, current, expected, admission, None)
+            .await
+    }
+
+    /// Replace carrying the device's signed Wave-budget hint (`None` = unknown).
+    pub async fn replace_with(
+        &self,
+        session: &Session,
+        current: &Current,
+        expected: Revision,
+        admission: Admission,
+        accepting_waves: Option<bool>,
     ) -> Result<Live, Error> {
         let (record, entry) = self.load(session, current).await?;
         if record.revision != expected || admission.binding != current.binding {
@@ -460,6 +490,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
                 authority_until,
                 publication: admission.publication,
                 attachment,
+                accepting_waves,
             },
             Some(expected),
             deadline,
