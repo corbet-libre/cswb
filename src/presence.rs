@@ -34,6 +34,29 @@ impl VerifiedPresence {
     pub fn binding(&self) -> &Binding {
         &self.admission.binding
     }
+    /// The row's opaque storage key (a hash; it names neither member nor
+    /// device). Candidate pages are ordered by it.
+    pub fn key(&self) -> &str {
+        &self.record.key
+    }
+}
+
+/// The row with the freshest verified profile revision; the first such row in
+/// the given order wins a tie.
+pub fn freshest(rows: Vec<VerifiedPresence>) -> Option<VerifiedPresence> {
+    let mut best: Option<VerifiedPresence> = None;
+    for row in rows {
+        let newer = match &best {
+            Some(keep) => {
+                row.profile().transcript().revision > keep.profile().transcript().revision
+            }
+            None => true,
+        };
+        if newer {
+            best = Some(row);
+        }
+    }
+    best
 }
 
 /// Bounded candidate enumeration. A storage cursor never carries authority.
@@ -151,13 +174,30 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         verification: &Verification<'_>,
         contact: &impl Fn(&str) -> cshm::ContactCheck,
     ) -> Result<VerifiedPresence, Error> {
-        self.load(session, current).await?;
-        cmmr::validate_name(member)?;
         // One member may hold several device rows; the freshest verified
         // profile revision answers, so a requester naming a stale revision
         // reconciles by re-reading instead of decrypting old ciphertext.
+        freshest(
+            self.member_rows(session, current, member, verification, contact)
+                .await?,
+        )
+        .ok_or(Error::Absent)
+    }
+
+    /// Every verified live device row of one member, in storage key order.
+    /// Withdrawn or foreign-origin rows are never disclosed.
+    pub async fn member_rows(
+        &self,
+        session: &Session,
+        current: &Current,
+        member: &str,
+        verification: &Verification<'_>,
+        contact: &impl Fn(&str) -> cshm::ContactCheck,
+    ) -> Result<Vec<VerifiedPresence>, Error> {
+        self.load(session, current).await?;
+        cmmr::validate_name(member)?;
         let mut cursor: Option<cmmr::Cursor> = None;
-        let mut best: Option<VerifiedPresence> = None;
+        let mut rows = Vec::new();
         loop {
             let page = self
                 .store
@@ -168,20 +208,8 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
                     .verify_row(record, &current.binding.origin, verification, contact)
                     .await
                 {
-                    Ok(row) if row.binding().member == member => {
-                        let newer = match &best {
-                            Some(keep) => {
-                                row.profile().transcript().revision
-                                    > keep.profile().transcript().revision
-                            }
-                            None => true,
-                        };
-                        if newer {
-                            best = Some(row);
-                        }
-                    }
+                    Ok(row) if row.binding().member == member => rows.push(row),
                     Ok(_) => {}
-                    // Withdrawn or foreign-origin rows are never disclosed.
                     Err(Error::TrustUnavailable | Error::Expired | Error::Stale) => {}
                     Err(error) => return Err(error),
                 }
@@ -191,7 +219,8 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
                 break;
             }
         }
-        best.ok_or(Error::Absent)
+        rows.sort_by(|a, b| a.key().cmp(b.key()));
+        Ok(rows)
     }
 
     /// Fresh owner verification followed by one atomic committed-read cut.

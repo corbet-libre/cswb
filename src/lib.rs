@@ -11,7 +11,7 @@ pub use authority::{
     request_message,
 };
 pub use entry::{Attachment, PreparedEntry};
-pub use presence::{CandidatePage, Scan, VerifiedPresence};
+pub use presence::{CandidatePage, Scan, VerifiedPresence, freshest};
 
 use cmmr::{Clock, Deadline, Record, Revision, Store, Write};
 use serde::{Deserialize, Serialize};
