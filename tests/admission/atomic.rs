@@ -164,7 +164,13 @@ async fn capacity<S: Store + Clone>(store: S, clock: Time) {
         Err(Error::Storage(cmmr::Error::Capacity))
     ));
     assert_eq!(store.get(&key(&first)).await.unwrap(), Some(original));
-    assert!(store.get("swb_alice").await.unwrap().is_none());
+    assert!(
+        store
+            .get(&attendance_key("alice", &device.verifying_key().to_bytes()))
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert!(
         store
             .page("swb_present", None, 8)
@@ -348,7 +354,12 @@ async fn stale_attendance<S: Store + Clone>(store: S, clock: Time) {
     ));
     assert_eq!(store.get(&key(&next)).await.unwrap(), Some(before));
     assert_eq!(
-        store.get("swb_alice").await.unwrap().unwrap().revision,
+        store
+            .get(&attendance_key("alice", &device.verifying_key().to_bytes()))
+            .await
+            .unwrap()
+            .unwrap()
+            .revision,
         renewed.revision
     );
     assert_eq!(
@@ -421,7 +432,13 @@ async fn boundary<S: Store + Clone>(store: S, clock: Time, rollback: bool, phase
             assert_eq!(retained.value, [0]);
             assert_ne!(retained.revision, before.revision);
             assert_eq!(retained.deadline, before.deadline);
-            assert!(store.get("swb_alice").await.unwrap().is_some());
+            assert!(
+                store
+                    .get(&attendance_key("alice", &device.verifying_key().to_bytes()))
+                    .await
+                    .unwrap()
+                    .is_some()
+            );
             assert_eq!(
                 store
                     .page("swb_present", None, 8)
@@ -441,7 +458,13 @@ async fn boundary<S: Store + Clone>(store: S, clock: Time, rollback: bool, phase
         ));
         assert!(store.get(&key(&challenge)).await.unwrap().is_none());
     }
-    assert!(store.get("swb_alice").await.unwrap().is_none());
+    assert!(
+        store
+            .get(&attendance_key("alice", &device.verifying_key().to_bytes()))
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert!(
         store
             .page("swb_present", None, 8)
@@ -548,7 +571,11 @@ async fn committed_valkey_pair_survives_lost_reply_and_cancellation() {
         assert_eq!(store.state(), cmmr::State::Unavailable);
         store.reopen().await.unwrap();
         let marker = store.get(&key(&challenge)).await.unwrap().unwrap();
-        let attendance = store.get("swb_alice").await.unwrap().unwrap();
+        let attendance = store
+            .get(&attendance_key("alice", &device.verifying_key().to_bytes()))
+            .await
+            .unwrap()
+            .unwrap();
         assert_ne!(marker.revision, before.revision);
         assert_eq!(marker.value, [0]);
         assert_eq!(marker.deadline, before.deadline);

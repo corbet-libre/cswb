@@ -72,8 +72,13 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         let result = self.verify_publication(origin, &entry.publication, verification, 1, contact);
         match result {
             Ok((mut admission, profile)) if admission.binding == entry.binding => {
-                if record.key != format!("swb_{}", admission.binding.member) {
-                    return Err(Error::Storage(cmmr::Error::Corrupt));
+                if record.key
+                    != attendance_key(&admission.binding.member, &admission.binding.device)
+                {
+                    // A row stored under the wrong key (including the retired
+                    // per-member key) is withdrawn, never disclosed or trusted.
+                    self.store.delete_generation(&record.generation).await?;
+                    return Err(Error::Stale);
                 }
                 admission.authority_until = admission.authority_until.min(entry.authority_until);
                 admission.attachment = entry.attachment;
@@ -148,13 +153,45 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
     ) -> Result<VerifiedPresence, Error> {
         self.load(session, current).await?;
         cmmr::validate_name(member)?;
-        let record = self
-            .store
-            .get(&format!("swb_{member}"))
-            .await?
-            .ok_or(Error::Absent)?;
-        self.verify_row(record, &current.binding.origin, verification, contact)
-            .await
+        // One member may hold several device rows; the freshest verified
+        // profile revision answers, so a requester naming a stale revision
+        // reconciles by re-reading instead of decrypting old ciphertext.
+        let mut cursor: Option<cmmr::Cursor> = None;
+        let mut best: Option<VerifiedPresence> = None;
+        loop {
+            let page = self
+                .store
+                .page(&member_index(member), cursor.as_ref(), 8)
+                .await?;
+            for record in page.records {
+                match self
+                    .verify_row(record, &current.binding.origin, verification, contact)
+                    .await
+                {
+                    Ok(row) if row.binding().member == member => {
+                        let newer = match &best {
+                            Some(keep) => {
+                                row.profile().transcript().revision
+                                    > keep.profile().transcript().revision
+                            }
+                            None => true,
+                        };
+                        if newer {
+                            best = Some(row);
+                        }
+                    }
+                    Ok(_) => {}
+                    // Withdrawn or foreign-origin rows are never disclosed.
+                    Err(Error::TrustUnavailable | Error::Expired | Error::Stale) => {}
+                    Err(error) => return Err(error),
+                }
+            }
+            cursor = page.next;
+            if cursor.is_none() {
+                break;
+            }
+        }
+        best.ok_or(Error::Absent)
     }
 
     /// Fresh owner verification followed by one atomic committed-read cut.

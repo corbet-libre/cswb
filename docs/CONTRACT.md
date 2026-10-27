@@ -1,6 +1,6 @@
 # Switchboard contract
 
-Own authoritative bounded volatile attendance under Gather. One community pseudonym has one current device generation. New attendance atomically replaces the former generation. Complete publication bytes and ciphertext are replaced together; Lookup may index only committed entries.
+Own authoritative bounded volatile attendance under Gather. One community pseudonym holds one current generation per device; every device keeps its own simultaneous session. New attendance of a device atomically replaces that device's former generation and leaves every other device session live. Complete publication bytes and ciphertext are replaced together; Lookup may index only committed entries. Member counts deduplicate by member identity: presence enumeration may return several device rows per member, and every member-visible count (search, watch, capacity) keeps one entry per member.
 
 The service supplies one scoped volatile Store, clock, CSPRNG-backed Tokens and explicit resource limits. The store contract lives in cmmr and is wired through cvtl by the door. Every write has an exclusive deadline bounded by the liveness lease and admission authority. Heartbeats cannot extend the original authority. Reads check current binding, schema, epoch, device and deadline. Stale generations cannot read, change or delete replacements. Departure deletes the generation including its ciphertext and indexes. CAS conflicts require renewed verification; uncertain commits must be reconciled, never blindly retried.
 

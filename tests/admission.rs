@@ -293,7 +293,16 @@ async fn signed_settings_cannot_change_the_forum_lease_constants() {
             .unwrap();
         assert_eq!(live.deadline, lease);
     }
-    assert!(store.get("swb_alice").await.unwrap().is_some());
+    assert!(
+        store
+            .get(&attendance_key(
+                "alice",
+                &fixture.device.verifying_key().to_bytes()
+            ))
+            .await
+            .unwrap()
+            .is_some()
+    );
 }
 #[derive(Clone, Copy)]
 struct Wall;
@@ -654,6 +663,94 @@ async fn nonce_cannot_replay_after_heartbeat_extends_its_original_lease() {
             .records
             .is_empty()
     );
+}
+
+#[tokio::test]
+async fn two_device_rows_answer_candidate_once_with_the_newest_revision() {
+    let now = 2_000_000_000;
+    let clock = Time(Arc::new(AtomicU64::new(now * 1000)));
+    let store = Arc::new(
+        cmmr::Memory::new(
+            cmmr::Scope::new("garden", "two-devices").unwrap(),
+            storage_limits(),
+            clock.clone(),
+        )
+        .unwrap(),
+    );
+    let board = board(store.clone(), clock.clone());
+    let mut first = Fixture::new("alice", 1, now).await;
+    let mut second = Fixture::with_device("alice", 2, now, 14).await;
+    let (one, _) = enter(&board, &mut first).await;
+    let (two, _) = enter(&board, &mut second).await;
+    // Both device sessions stay live side by side on their own rows.
+    assert_eq!(
+        store
+            .page("swb_present", None, 8)
+            .await
+            .unwrap()
+            .records
+            .len(),
+        2
+    );
+    let possession = proof(&second, &two, "ciphertext", 7, b"owner");
+    let current = board
+        .authorize(
+            RequestProof {
+                origin: ORIGIN,
+                session: &two,
+                action: "ciphertext",
+                body: b"owner",
+                possession: &possession,
+            },
+            &second.verification(),
+            &clean,
+        )
+        .await
+        .unwrap();
+    // One member answers once: the freshest verified device revision wins, so
+    // a requester naming it reads current ciphertext instead of reconciling.
+    let found = board
+        .candidate(&two, &current, "alice", &second.verification(), &clean)
+        .await
+        .unwrap();
+    assert_eq!(found.binding().member, "alice");
+    assert_eq!(
+        found.binding().device,
+        second.device.verifying_key().to_bytes()
+    );
+    assert_eq!(found.profile().transcript().revision, 2);
+    assert_eq!(found.publication().signed, second.publication.signed);
+    let possession = proof(&first, &one, "heartbeat", 8, b"renew");
+    let first_current = board
+        .authorize(
+            RequestProof {
+                origin: ORIGIN,
+                session: &one,
+                action: "heartbeat",
+                body: b"renew",
+                possession: &possession,
+            },
+            &first.verification(),
+            &clean,
+        )
+        .await
+        .unwrap();
+    assert!(board.read(&one, &first_current).await.is_ok());
+    // No row for an absent member answers.
+    assert!(matches!(
+        board
+            .candidate(&two, &current, "mallory", &second.verification(), &clean)
+            .await,
+        Err(Error::Absent)
+    ));
+    // Departing one device keeps the member present on the other: the
+    // attendance row and its spent heartbeat nonce go, nothing else.
+    assert_eq!(board.depart(&one).await.unwrap(), 2);
+    let found = board
+        .candidate(&two, &current, "alice", &second.verification(), &clean)
+        .await
+        .unwrap();
+    assert_eq!(found.profile().transcript().revision, 2);
 }
 
 #[path = "admission/atomic.rs"]

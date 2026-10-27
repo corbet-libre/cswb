@@ -170,6 +170,35 @@ struct Entry {
     attachment: Option<Attachment>,
 }
 
+/// Storage key for one device's attendance row. A member may hold
+/// simultaneous rows, one per device; the member/device binding inside the
+/// row is rechecked by `verify_row`, so a mismatched key is withdrawn.
+/// Hashed so long member names and full device keys fit the storage name
+/// bound; member counts are deduplicated by readers, never by this key.
+pub fn attendance_key(member: &str, device: &[u8; 32]) -> String {
+    use sha2::Digest as _;
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(b"cswb.attendance.v1");
+    hasher.update([0]);
+    hasher.update(member.as_bytes());
+    hasher.update([0]);
+    hasher.update(device);
+    format!("swb_{}", data_encoding::HEXLOWER.encode(&hasher.finalize()))
+}
+
+/// Presence index scoping one member's device rows for direct lookup.
+pub(crate) fn member_index(member: &str) -> String {
+    use sha2::Digest as _;
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(b"cswb.member.v1");
+    hasher.update([0]);
+    hasher.update(member.as_bytes());
+    format!(
+        "swb_m_{}",
+        data_encoding::HEXLOWER.encode(&hasher.finalize())
+    )
+}
+
 /// Owns no second roster: the supplied scoped volatile store is authoritative.
 pub struct Switchboard<S, C, R> {
     store: S,
@@ -249,8 +278,10 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         Ok(Revision(bytes))
     }
 
-    /// New verified device attendance replaces the previous generation by CAS.
-    /// A racing replacement must retry a fresh verification and new generation.
+    /// New verified attendance replaces the previous generation of the same
+    /// device by CAS. A different device of the same member commits its own
+    /// row and leaves every other device session live. A racing replacement
+    /// must retry a fresh verification and new generation.
     pub async fn enter(&self, admission: Admission) -> Result<(Session, Live), Error> {
         let (session, entry, previous, deadline) = self.prepare_enter(admission).await?;
         let live = self
@@ -276,7 +307,10 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         let deadline = self.deadline(admission.authority_until, admission.lease_ms)?;
         let previous = self
             .store
-            .get(&format!("swb_{}", admission.binding.member))
+            .get(&attendance_key(
+                &admission.binding.member,
+                &admission.binding.device,
+            ))
             .await?;
         let generation = data_encoding::HEXLOWER.encode(&self.token()?.0);
         if previous
@@ -323,12 +357,12 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         let write = Write {
             expected,
             record: Record {
-                key: format!("swb_{}", session.member),
+                key: attendance_key(&session.member, &session.device),
                 generation: session.generation.clone(),
                 revision,
                 deadline,
                 value,
-                indexes: vec!["swb_present".into()],
+                indexes: vec!["swb_present".into(), member_index(&session.member)],
             },
         };
         let live = Live {
@@ -346,7 +380,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         }
         let record = self
             .store
-            .get(&format!("swb_{}", session.member))
+            .get(&attendance_key(&session.member, &session.device))
             .await?
             .ok_or(Error::Absent)?;
         if record.generation != session.generation {

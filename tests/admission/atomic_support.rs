@@ -65,7 +65,9 @@ impl<S: Store> Store for Gated<S> {
     }
     async fn get(&self, key: &str) -> Result<Option<cmmr::Record>, cmmr::Error> {
         let record = self.real.get(key).await?;
-        if key == "swb_alice"
+        // Pause on the attendance-row read only: challenge and nonce keys
+        // carry their own prefixes, and every device row shares this one.
+        if key.starts_with("swb_")
             && self
                 .gate
                 .mode

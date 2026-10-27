@@ -209,7 +209,16 @@ async fn retention<S: Store + Clone>(store: S, clock: Time) {
         now + 6000
     );
     clock.0.store(now + 6000, Ordering::SeqCst);
-    assert!(store.get("swb_alice").await.unwrap().is_none());
+    assert!(
+        store
+            .get(&attendance_key(
+                "alice",
+                &fixture.device.verifying_key().to_bytes()
+            ))
+            .await
+            .unwrap()
+            .is_none()
+    );
     // The shorter attendance expiry cannot revive the one-use challenge.
     assert_eq!(
         store.get(&key(&challenge)).await.unwrap().unwrap().value,
@@ -320,7 +329,16 @@ async fn tamper_and_completion<S: Store + Clone>(store: S, clock: Time) {
     );
     assert!(result.is_err());
     assert!(store.get(&key(&challenge)).await.unwrap().unwrap() == pending);
-    assert!(store.get("swb_alice").await.unwrap().is_none());
+    assert!(
+        store
+            .get(&attendance_key(
+                "alice",
+                &fixture.device.verifying_key().to_bytes()
+            ))
+            .await
+            .unwrap()
+            .is_none()
+    );
     let prepared = board
         .prepare_entry(
             input(&fixture.publication, &challenge, &signature),

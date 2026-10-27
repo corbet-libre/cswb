@@ -127,14 +127,40 @@ async fn replacement_heartbeat_and_departure_are_whole_and_fenced() {
     let mut next = admission();
     next.binding.device = [8; 32];
     let (other, _) = board.enter(next).await.unwrap();
-    assert!(matches!(
-        board.read(&session, &current()).await,
-        Err(Error::Stale)
-    ));
-    assert_eq!(board.depart(&session).await.unwrap(), 0);
+    // A second device of the same member holds its own simultaneous session:
+    // the first session stays live and keeps its own heartbeat.
+    assert!(board.read(&session, &current()).await.is_ok());
     let mut authority = current();
     authority.binding.device = [8; 32];
     assert!(board.read(&other, &authority).await.is_ok());
+    assert_eq!(
+        board
+            .store
+            .page("swb_present", None, 8)
+            .await
+            .unwrap()
+            .records
+            .len(),
+        2
+    );
+    // Departing one device removes only its own row; the member stays present
+    // on the other device.
+    assert_eq!(board.depart(&session).await.unwrap(), 1);
+    assert!(board.read(&other, &authority).await.is_ok());
+    assert!(matches!(
+        board.read(&session, &current()).await,
+        Err(Error::Absent)
+    ));
+    assert_eq!(
+        board
+            .store
+            .page("swb_present", None, 8)
+            .await
+            .unwrap()
+            .records
+            .len(),
+        1
+    );
     assert_eq!(board.depart(&other).await.unwrap(), 1);
     assert_eq!(board.depart(&other).await.unwrap(), 0);
     assert!(matches!(
@@ -195,7 +221,14 @@ async fn current_epoch_schema_and_expiry_withdraw_immediately() {
             board.read(&session, &fresh).await,
             Err(Error::Expired | Error::Stale)
         ));
-        assert!(board.store.get("swb_alice").await.unwrap().is_none());
+        assert!(
+            board
+                .store
+                .get(&attendance_key("alice", &[7; 32]))
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 }
 
@@ -293,7 +326,14 @@ async fn concurrent_updates_have_one_winner_and_departure_stops_old_writes() {
             .await,
         Err(Error::Storage(cmmr::Error::Conflict))
     ));
-    assert!(board.store.get("swb_alice").await.unwrap().is_none());
+    assert!(
+        board
+            .store
+            .get(&attendance_key("alice", &[7; 32]))
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[tokio::test]
@@ -325,7 +365,12 @@ async fn storage_capacity_clock_regression_and_close_are_refusals() {
 async fn corrupt_storage_and_shorter_authority_refuse() {
     let (board, _) = setup();
     let (session, live) = board.enter(admission()).await.unwrap();
-    let mut record = board.store.get("swb_alice").await.unwrap().unwrap();
+    let mut record = board
+        .store
+        .get(&attendance_key("alice", &[7; 32]))
+        .await
+        .unwrap()
+        .unwrap();
     record.value = vec![0];
     record.revision = Revision([5; 16]);
     board
@@ -415,7 +460,12 @@ async fn deadline_passed_after_storage_read_and_corrupt_authority_are_rejected()
     ));
     let (board, _) = setup();
     let (session, live) = board.enter(admission()).await.unwrap();
-    let mut record = board.store.get("swb_alice").await.unwrap().unwrap();
+    let mut record = board
+        .store
+        .get(&attendance_key("alice", &[7; 32]))
+        .await
+        .unwrap()
+        .unwrap();
     let mut entry: Entry = serde_json::from_slice(&record.value).unwrap();
     entry.authority_until = 100;
     record.value = serde_json::to_vec(&entry).unwrap();

@@ -381,7 +381,7 @@ impl<S: Store, C: Clock, R: Tokens> Switchboard<S, C, R> {
         cmmr::validate_name(&session.member)?;
         let record = self
             .store
-            .get(&format!("swb_{}", session.member))
+            .get(&attendance_key(&session.member, &session.device))
             .await?
             .ok_or(Error::Absent)?;
         if record.generation != session.generation || possession.nonce == [0; 16] {
