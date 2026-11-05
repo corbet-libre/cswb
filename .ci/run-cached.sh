@@ -35,15 +35,12 @@ export PATH="$(dirname "$CCID_BIN"):$CARGO_HOME/bin:$PROTO_HOME/shims:$PROTO_HOM
 export CI_JOBS="${CI_JOBS:-2}" CARGO_BUILD_JOBS="${CI_JOBS:-2}"
 export RUST_TEST_THREADS="${CI_TEST_THREADS:-2}"
 export CARGO_NET_GIT_FETCH_WITH_CLI=true
-if [ -n "${GIT_CONFIG_COUNT:-}" ]; then
-  echo 'GIT_CONFIG_COUNT is already set; refusing to overwrite job git config' >&2
-  exit 2
-fi
-export GIT_CONFIG_COUNT=2
-export GIT_CONFIG_KEY_0='url.https://git.corbet.ch/corbet-libs/.insteadOf'
-export GIT_CONFIG_VALUE_0='https://github.com/corbet-libs/'
-export GIT_CONFIG_KEY_1='url.https://git.corbet.ch/corbet-foss/.insteadOf'
-export GIT_CONFIG_VALUE_1='https://github.com/corbet-foss/'
+git_n=${GIT_CONFIG_COUNT:-0}
+export GIT_CONFIG_COUNT=$((git_n + 2))
+export "GIT_CONFIG_KEY_$((git_n + 0))"='url.https://git.corbet.ch/corbet-libs/.insteadOf'
+export "GIT_CONFIG_VALUE_$((git_n + 0))"='https://github.com/corbet-libs/'
+export "GIT_CONFIG_KEY_$((git_n + 1))"='url.https://git.corbet.ch/corbet-foss/.insteadOf'
+export "GIT_CONFIG_VALUE_$((git_n + 1))"='https://github.com/corbet-foss/'
 # Shared-first toolchain lock: production base helper verbatim (no MSRV extra;
 # hosted uses stable only; nightly coverage rides the same gate->main flow).
 TOOLCHAIN_LOCK_FILE="$toolchains/install.lock"
